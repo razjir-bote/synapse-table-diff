@@ -4,9 +4,10 @@ import type { ProfileStore, ConnectionProfile } from './profileStore';
 import { buildMssqlConfig, entraTokenProvider } from '../db/auth';
 import { openRunner } from '../db/runner';
 import { engineEditionQuery } from '../sql/queries';
+import { DEFAULT_LIMITS } from '../core/types';
 
 function timeoutSeconds(): number {
-  return vscode.workspace.getConfiguration('tableDiff').get<number>('queryTimeoutSeconds', 120);
+  return vscode.workspace.getConfiguration('tableDiff').get<number>('queryTimeoutSeconds', DEFAULT_LIMITS.queryTimeoutSeconds);
 }
 
 async function required(prompt: string, placeHolder?: string): Promise<string | undefined> {
