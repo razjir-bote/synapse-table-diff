@@ -29,6 +29,7 @@ export async function openRunner(config: sql.config, timeoutSeconds: number): Pr
     try { await pool.close(); } catch { /* ignore */ }
     throw mapConnectError(err, String(config.server ?? ''), String(config.database ?? ''));
   }
+  pool.on('error', () => { /* connection-level failures surface via the active request; avoid uncaught exception */ });
   return new MssqlRunner(pool);
 }
 
@@ -82,7 +83,8 @@ class MssqlRunner implements QueryRunner {
           });
           request.on('error', (err: unknown) => { error = err; done = true; notify(); });
           request.on('done', () => { done = true; notify(); });
-          request.query(text);
+          const p = request.query(text) as unknown as Promise<unknown> | undefined;
+          if (p && typeof p.catch === 'function') p.catch(() => {});
         };
 
         const finish = () => {
@@ -90,7 +92,11 @@ class MssqlRunner implements QueryRunner {
           finished = true;
           queue.length = 0;
           cleanup();
-          if (started && !done) { cancel(); done = true; }
+          if (started && !done) {
+            cancel();
+            done = true;
+            if (paused) { paused = false; request.resume(); }
+          }
         };
 
         return {
@@ -122,7 +128,10 @@ class MssqlRunner implements QueryRunner {
               if (paused) { paused = false; request.resume(); }
               finish();
               done = false;
-              await settled;
+              let timer: NodeJS.Timeout | undefined;
+              const timeout = new Promise<void>((resolve) => { timer = setTimeout(resolve, 30000); });
+              await Promise.race([settled, timeout]);
+              if (timer) clearTimeout(timer);
               done = true;
             } else {
               finish();

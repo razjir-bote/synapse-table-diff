@@ -69,6 +69,22 @@ describe('openRunner', () => {
     expect(await runner.query<{ x: number }>('SELECT 3 AS x')).toEqual([{ x: 3 }]);
   });
 
+  it('abort while stream is paused leaves runner usable', async () => {
+    const ac = new AbortController();
+    const run = async () => {
+      let first = true;
+      for await (const _ of runner.stream(NUMBERS(200000), ac.signal)) {
+        if (first) {
+          first = false;
+          await new Promise((r) => setTimeout(r, 1500)); // let >1000 rows queue so the request pauses
+          ac.abort();
+        }
+      }
+    };
+    await expect(run()).rejects.toBeInstanceOf(CompareCancelledError);
+    expect(await runner.query<{ x: number }>('SELECT 4 AS x')).toEqual([{ x: 4 }]);
+  });
+
   it('abort during query rejects with CompareCancelledError', async () => {
     const ac = new AbortController();
     setTimeout(() => ac.abort(), 300);
