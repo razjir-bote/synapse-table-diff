@@ -50,3 +50,42 @@ export interface SchemaColumnDiff {
 export interface ExcludedColumn { name: string; reason: string }
 export interface SchemaDiff { columns: SchemaColumnDiff[]; differenceCount: number }
 export interface ComparePlan { keys: ColumnPairPlan[]; compared: ColumnPairPlan[]; excluded: ExcludedColumn[] }
+
+export interface BucketRow { b: number; cnt: bigint; dk: bigint; s1: string; s2: string } // s1/s2 as decimal strings
+export interface BucketCompare {
+  mismatched: number[];
+  problem: number[]; // cnt != dk on either side, or b = -1
+  rowsInScope: number; // sum of cnt over mismatched + problem buckets, both sides
+  leftRows: number;
+  rightRows: number;
+  leftDupRows: number;
+  rightDupRows: number;
+  leftNullKeyRows: number;
+  rightNullKeyRows: number;
+}
+export type ChangeKind = 'added' | 'removed' | 'changed';
+export interface PairRow { kh: Buffer; rh: Buffer; knull: number; b2: number; keys: unknown[] }
+export interface DiffKey { kind: ChangeKind; khHex: string; b2: number }
+export interface KeyProblems {
+  duplicateKeys: { side: Side; key: string[]; count: number }[];
+  nullKeys: { side: Side; key: (string | null)[] }[];
+  leftDupRows: number;
+  rightDupRows: number;
+  leftNullKeyRows: number;
+  rightNullKeyRows: number;
+}
+export interface MergeResult {
+  added: number;
+  removed: number;
+  changed: number;
+  selected: DiffKey[]; // first detailLimit in kh order
+  duplicateSamples: KeyProblems['duplicateKeys'];
+  nullKeySamples: KeyProblems['nullKeys'];
+}
+export interface DiffRow {
+  kind: ChangeKind;
+  key: string[];
+  left?: (string | null)[];
+  right?: (string | null)[];
+  changedColumns: string[];
+}
