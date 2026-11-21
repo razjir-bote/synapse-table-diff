@@ -39,3 +39,14 @@ export const DEFAULT_LIMITS: Limits = {
   inListCap: 5_000,
   queryTimeoutSeconds: 3600,
 };
+
+export interface SchemaColumnDiff {
+  name: string;
+  status: 'same' | 'added' | 'removed' | 'changed';
+  left?: ColumnInfo;
+  right?: ColumnInfo;
+  changes: ('type' | 'nullability' | 'position')[];
+}
+export interface ExcludedColumn { name: string; reason: string }
+export interface SchemaDiff { columns: SchemaColumnDiff[]; differenceCount: number }
+export interface ComparePlan { keys: ColumnPairPlan[]; compared: ColumnPairPlan[]; excluded: ExcludedColumn[] }
