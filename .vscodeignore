@@ -1,0 +1,14 @@
+.superpowers/**
+docs/**
+test/**
+src/**
+webview/**
+node_modules/**
+.env
+.env.*
+docker-compose.yml
+esbuild.mjs
+vitest*.ts
+tsconfig.json
+**/*.map
+*.vsix

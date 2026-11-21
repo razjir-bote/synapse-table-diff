@@ -1,0 +1,68 @@
+{
+  "name": "synapse-table-diff",
+  "displayName": "Table Diff",
+  "description": "Compare SQL Server and Azure Synapse tables",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      { "command": "tableDiff.compare", "title": "Table Diff: Compare Tables…" },
+      { "command": "tableDiff.addConnection", "title": "Table Diff: Add Connection" },
+      { "command": "tableDiff.removeConnection", "title": "Table Diff: Remove Connection" },
+      { "command": "tableDiff.rerunRecent", "title": "Table Diff: Re-run Recent…" }
+    ],
+    "configuration": {
+      "title": "Table Diff",
+      "properties": {
+        "tableDiff.pairLimit": {
+          "type": "number",
+          "default": 2000000,
+          "description": "Maximum number of row pairs compared."
+        },
+        "tableDiff.detailLimit": {
+          "type": "number",
+          "default": 100000,
+          "description": "Maximum number of detail rows returned."
+        },
+        "tableDiff.inListCap": {
+          "type": "number",
+          "default": 5000,
+          "description": "Maximum number of keys in an IN list."
+        },
+        "tableDiff.queryTimeoutSeconds": {
+          "type": "number",
+          "default": 3600,
+          "description": "Query timeout in seconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "vitest run -c vitest.config.ts",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "mssql": "^11.0.1"
+  },
+  "devDependencies": {
+    "@types/mssql": "^9.1.5",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.1.0",
+    "dotenv": "^16.4.5",
+    "esbuild": "^0.21.5",
+    "jsdom": "^24.1.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}
