@@ -102,6 +102,10 @@ All settings are under `tableDiff.*` and are read at the start of each run.
 | `tableDiff.inListCap` | `5000` | Maximum number of keys in one `IN` list. |
 | `tableDiff.queryTimeoutSeconds` | `3600` | Query timeout in seconds. |
 
+The **Trust the server certificate?** prompt in Add Connection is opt-in (default **No**). Choose **Yes**
+only for a local or development server with a self-signed certificate. Trusting a certificate on a
+production or untrusted network exposes the connection to interception.
+
 ## Serverless cost note
 
 Serverless pools are billed per data processed. A comparison involving a serverless side scans its

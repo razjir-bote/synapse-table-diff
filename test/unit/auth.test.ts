@@ -27,6 +27,14 @@ describe('buildMssqlConfig', () => {
     expect(c.options?.encrypt).toBe(true);
     expect(c.authentication).toEqual({ type: 'azure-active-directory-access-token', options: { token: 'T' } });
   });
+  it('trustServerCertificate defaults to false and is passed through when enabled', () => {
+    expect(buildMssqlConfig(entra, 'db1', { token: 'T' }).options?.trustServerCertificate).toBe(false);
+    expect(buildMssqlConfig(sqlp, 'db1', { password: 'P' }).options?.trustServerCertificate).toBe(false);
+    const trusting = { ...sqlp, trustServerCertificate: true };
+    const c = buildMssqlConfig(trusting, 'db1', { password: 'P' });
+    expect(c.options?.trustServerCertificate).toBe(true);
+    expect(c.options?.encrypt).toBe(true);
+  });
   it('sql', () => {
     const c = buildMssqlConfig(sqlp, 'db1', { password: 'P' });
     expect(c.user).toBe('u'); expect(c.password).toBe('P');

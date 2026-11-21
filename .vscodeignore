@@ -6,6 +6,8 @@ docs/**
 test/**
 src/**
 webview/**/*.ts
+.gitignore
+webview/**
 node_modules/**
 .env
 .env.*

@@ -42,6 +42,19 @@ export async function addConnection(store: ProfileStore): Promise<void> {
     if (password === undefined) return;
   }
 
+  const trust = await vscode.window.showQuickPick(
+    [
+      { label: 'No (recommended)', value: false },
+      { label: 'Yes', value: true },
+    ],
+    {
+      placeHolder: 'Trust the server certificate? (only for local/dev servers with self-signed certificates)',
+      ignoreFocusOut: true,
+    },
+  );
+  if (!trust) return;
+  profile.trustServerCertificate = trust.value;
+
   try {
     const secret = profile.auth === 'entra'
       ? { token: await entraTokenProvider(vscode.authentication)(profile.tenantId) }

@@ -203,12 +203,10 @@ message). The run does not hang, and no results panel opens for the failed run.
 4. In the host window, run `Table Diff: Add Connection`. Server `localhost,14333`, database
    `tablediff_a`, authentication `SQL login`, user `sa`, with the password from your `.env`
    (see `.env.example`, `TABLEDIFF_TEST_CONN`). Use the same settings for `tablediff_b`.
+   At the prompt `Trust the server certificate?`, choose **Yes**. The local Docker server uses a
+   self-signed certificate; only do this for local or dev servers.
 5. Run `Table Diff: Compare Tables…`: left `tablediff_a.dbo.orders`, right
    `tablediff_b.dbo.orders`, key column `order_id`.
-
-**Note:** the extension always requests an encrypted connection and has no option to trust a
-self-signed server certificate. If the Docker SQL Server uses a self-signed certificate and the
-connection fails with a certificate error, record it as a known gap rather than working around it.
 
 **Expected:** The summary shows Removed 10, Added 5, Changed 54. The run completes in a few seconds.
 

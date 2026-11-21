@@ -8,6 +8,8 @@ export interface ConnectionProfile {
   auth: 'entra' | 'sql';
   user?: string;
   tenantId?: string;
+  /** Opt-in: accept a self-signed server certificate (local/dev servers only). */
+  trustServerCertificate?: boolean;
 }
 
 const PROFILES_KEY = 'tableDiff.profiles';

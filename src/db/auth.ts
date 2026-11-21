@@ -24,7 +24,7 @@ export function buildMssqlConfig(
   const base: mssql.config = {
     server: p.server,
     database,
-    options: { encrypt: true },
+    options: { encrypt: true, trustServerCertificate: p.trustServerCertificate === true },
   };
   if (p.auth === 'entra') {
     return {
