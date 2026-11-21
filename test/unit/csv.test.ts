@@ -133,3 +133,58 @@ describe('exportMessage', () => {
     expect(exportMessage(capped)).toBe('Exported 3 rows (first 3 of 5 differences).');
   });
 });
+
+describe('writeCsv error handling', () => {
+  const manyRows: DiffRow[] = Array.from({ length: 3000 }, (_, i) => ({
+    kind: 'added' as const,
+    key: [String(i), 'eu'],
+    right: [`name-${i}-${'x'.repeat(40)}`, String(i)],
+    changedColumns: [],
+  }));
+
+  it('rejects when the first write fails, without an unhandled error', async () => {
+    const w = new Writable({
+      write(_chunk, _enc, cb) {
+        cb(new Error('disk full'));
+      },
+    });
+    await expect(writeCsv(makeResult(rows), w)).rejects.toThrow('disk full');
+  });
+
+  it('rejects when the stream is destroyed mid-stream while writes keep succeeding', async () => {
+    let destroyed = false;
+    const w = new Writable({
+      highWaterMark: 1024 * 1024,
+      write(_chunk, _enc, cb) {
+        if (!destroyed) {
+          destroyed = true;
+          this.destroy(new Error('connection reset'));
+        }
+        cb();
+      },
+    });
+    await expect(writeCsv(makeResult(manyRows), w)).rejects.toThrow();
+  });
+
+  it('rejects while waiting for drain when the stream is destroyed', async () => {
+    const w = new Writable({
+      highWaterMark: 1,
+      write(_chunk, _enc, _cb) {
+        // Never acknowledge: write() returns false and writeCsv waits for drain.
+        setTimeout(() => this.destroy(new Error('drain wait failure')), 5);
+      },
+    });
+    await expect(writeCsv(makeResult(rows), w)).rejects.toThrow('drain wait failure');
+  });
+
+  it('rejects instead of hanging when the stream errors after the last chunk, before finish', async () => {
+    const w = new Writable({
+      highWaterMark: 1024 * 1024,
+      write(_chunk, _enc, _cb) {
+        // Never acknowledge the write; error arrives while end() is pending.
+        setTimeout(() => this.destroy(new Error('late failure')), 5);
+      },
+    });
+    await expect(writeCsv(makeResult(rows), w)).rejects.toThrow('late failure');
+  });
+});
