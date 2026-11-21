@@ -10,6 +10,21 @@ const p = (k: number, rh: number, extra: Partial<PairRow> = {}): PairRow => ({
 async function* gen(rows: PairRow[]): AsyncGenerator<PairRow> { for (const r of rows) yield r; }
 
 describe('mergePairs', () => {
+  it('starts both sides together: the left source can wait for the right one to be pulled', async () => {
+    let rightPulled!: () => void;
+    const rightStarted = new Promise<void>((res) => { rightPulled = res; });
+    async function* left(): AsyncGenerator<PairRow> {
+      await rightStarted; // a serial start would deadlock here
+      yield p(1, 1);
+    }
+    async function* right(): AsyncGenerator<PairRow> {
+      rightPulled();
+      yield p(1, 2);
+    }
+    const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error('serial start')), 1000));
+    const r = await Promise.race([mergePairs(left(), right(), 10), timeout]);
+    expect(r.changed).toBe(1);
+  });
   it('exact counts on interleaved input', async () => {
     const L = [p(1, 1), p(2, 1), p(4, 1), p(6, 1)];
     const R = [p(2, 1), p(3, 1), p(4, 9), p(7, 1)];

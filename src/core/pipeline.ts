@@ -103,7 +103,50 @@ const uniqSorted = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
 /** Level-1 parent ids of level-2 ids (keeps -1 as -1). */
 const parents = (ids: number[]) => uniqSorted(ids.map((b) => (b === -1 ? -1 : Math.floor(b / 256))));
 
-/** Bucket filter at `level`, falling back to level 1 and then to no filter when the list is too long. */
+export const TYPE_EXCLUDED_WARNING = (n: number) =>
+  `${n} column(s) were not compared because their types differ or are unsupported; see the Schema tab.`;
+
+/**
+ * Estimated number of level-2 buckets with differences, given `m` differing level-1 buckets (out of 4096).
+ * Bucket ids come from a hash, so differing keys spread uniformly: with d differing keys the expected number
+ * of hit level-1 buckets is 4096*(1 - e^(-d/4096)), hence d ≈ -4096*ln(1 - m/4096). Each level-1 bucket has
+ * 256 level-2 children (1,048,576 in all), so for d well below a million almost every differing key lands in
+ * its own level-2 bucket: k ≈ d. This is a lower bound on the list the re-bucket scan would produce; when it is
+ * already over the cap, the pass-2 filter would fall back to the level-1 ids anyway and the scan is wasted.
+ */
+export function estimatedLevel2Ids(m: number): number {
+  if (m <= 0) return 0;
+  if (m >= 4096) return Infinity;
+  const d = -4096 * Math.log(1 - m / 4096);
+  return 1_048_576 * (1 - Math.exp(-d / 1_048_576));
+}
+
+/** Whether a level-2 re-bucket can yield a pass-2 id list within `cap` (`l1Ids` may include -1). */
+export function rebucketCanFit(l1Ids: number[], cap: number): boolean {
+  const nonNull = l1Ids.filter((b) => b !== -1).length;
+  if (nonNull === 0 || l1Ids.length > cap) return false;
+  const nullBucket = l1Ids.length - nonNull; // -1 stays in the list as is
+  return Math.round(estimatedLevel2Ids(nonNull)) + nullBucket <= cap;
+}
+
+/**
+ * The detail pass reads only level-2 buckets. Keeps the selected keys whose b2 lies in the first `cap`
+ * distinct b2 values. `selected` is in kh order and b2 is a prefix of kh, so b2 is non-decreasing.
+ */
+export function browsableKeys(selected: DiffKey[], cap: number): { keys: DiffKey[]; b2: number[] } {
+  const b2: number[] = [];
+  let n = 0;
+  for (const k of selected) {
+    if (b2.length === 0 || b2[b2.length - 1] !== k.b2) {
+      if (b2.length >= cap) break;
+      b2.push(k.b2);
+    }
+    n++;
+  }
+  return { keys: selected.slice(0, n), b2 };
+}
+
+/** Pass-2 bucket filter at `level`, falling back to level 1 and then to no filter when the list is too long. */
 function capFilter(level: 1 | 2, ids: number[], cap: number): BucketFilter {
   if (level === 2 && ids.length > cap) return capFilter(1, parents(ids), cap);
   if (ids.length > cap) return { level: 1, ids: [] }; // empty list = whole table
@@ -151,20 +194,23 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
       request: req, schema, plan, leftRows: l1.leftRows, rightRows: l1.rightRows, poolTypes,
     };
 
+    const typeExcluded = plan.excluded.filter((e) => e.reason !== 'excluded by user').length;
+    const schemaWarnings = typeExcluded > 0 ? [TYPE_EXCLUDED_WARNING(typeExcluded)] : [];
+
     if (l1.mismatched.length === 0 && l1.problem.length === 0) {
       return {
         ...base, added: 0, removed: 0, changed: 0, rows: [], detailCapped: false,
-        keyProblems: keyProblemsBase(l1), warnings: [], durationMs: Date.now() - started,
+        keyProblems: keyProblemsBase(l1), warnings: schemaWarnings, durationMs: Date.now() - started,
       };
     }
 
     // 3. optional level-2 re-bucketing
     const l1Ids = uniqSorted([...l1.mismatched, ...l1.problem]);
     let pairFilter = capFilter(1, l1Ids, limits.inListCap);
-    // Re-bucketing only helps when its level-1 scope fits in an id list: the resulting level-2 list is at least
-    // as long, so over the cap pass 2 would fall back to the same scope and the extra scan would be wasted.
+    // Re-bucketing only helps when the level-2 list it produces fits under the cap; otherwise pass 2 falls back
+    // to the same level-1 scope and the extra scan is wasted (see rebucketCanFit).
     const within = l1Ids.filter((b) => b !== -1);
-    if (l1.rowsInScope > limits.pairLimit && within.length > 0 && within.length <= limits.inListCap) {
+    if (l1.rowsInScope > limits.pairLimit && rebucketCanFit(l1Ids, limits.inListCap)) {
       const serverless = SIDES.filter((s) => deps[s].poolType === 'serverless');
       // Fail-safe: an extra scan on a serverless side needs an explicit yes.
       const go = serverless.length === 0 || (deps.confirmExtraScan ? await deps.confirmExtraScan(serverless) : false);
@@ -190,24 +236,27 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
       ));
     checkAbort(signal);
 
-    // 5. details
-    const rows = merge.selected.length > 0 ? await fetchDetails(req, plan, merge.selected, tables, deps, progress) : [];
+    // 5. details: only the keys in the first inListCap level-2 buckets, so the detail pass never scans more
+    const browse = browsableKeys(merge.selected, limits.inListCap);
+    const rows = browse.keys.length > 0
+      ? await fetchDetails(req, plan, browse.keys, browse.b2, tables, deps, progress)
+      : [];
     checkAbort(signal);
 
     // 6. result
     const total = merge.added + merge.removed + merge.changed;
-    const detailCapped = merge.selected.length < total; // the detail limit only
+    const detailCapped = browse.keys.length < total; // the detail limit or the bucket cap
     const keyProblems: KeyProblems = {
       ...keyProblemsBase(l1),
       duplicateKeys: merge.duplicateSamples,
       nullKeys: merge.nullKeySamples,
     };
-    const warnings: string[] = [];
+    const warnings: string[] = [...schemaWarnings];
     const hasKeyProblems = keyProblems.leftDupRows + keyProblems.rightDupRows + keyProblems.leftNullKeyRows
       + keyProblems.rightNullKeyRows > 0 || merge.duplicateSamples.length > 0 || merge.nullKeySamples.length > 0;
     if (hasKeyProblems) warnings.push(KEY_PROBLEM_WARNING);
     if (detailCapped) warnings.push(`Showing the first ${rows.length} of ${total} differing rows.`);
-    if (rows.length < merge.selected.length) warnings.push(VANISHED_ROWS_WARNING);
+    if (rows.length < browse.keys.length) warnings.push(VANISHED_ROWS_WARNING);
 
     return {
       ...base,
@@ -230,18 +279,18 @@ async function fetchDetails(
   req: CompareRequest,
   plan: ComparePlan,
   selected: DiffKey[],
+  b2Ids: number[],
   tables: Record<Side, TableRef>,
   deps: PipelineDeps,
   progress: (stage: Stage, detail?: string) => void,
 ): Promise<DiffRow[]> {
-  const { limits } = deps;
   progress('details');
   const expected: Record<Side, Set<string>> = { left: new Set(), right: new Set() };
   for (const k of selected) {
     if (k.kind !== 'added') expected.left.add(k.khHex);
     if (k.kind !== 'removed') expected.right.add(k.khHex);
   }
-  const filter = capFilter(2, uniqSorted(selected.map((k) => k.b2)), limits.inListCap);
+  const filter: BucketFilter = { level: 2, ids: b2Ids };
 
   const found = await withRunners(deps, async (r, sig) => {
     const collect = async (side: Side): Promise<Map<string, Record<string, unknown>>> => {

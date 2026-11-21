@@ -87,8 +87,9 @@ export async function mergePairs(
     if (res.selected.length < detailLimit) res.selected.push({ kind, khHex: run.khHex, b2: run.rows[0].b2 });
   };
 
-  let l = await nextRun(lr, 'left');
-  let r = await nextRun(rr, 'right');
+  // Pull both sides together: a stream's query starts on its first read, so a serial start would make the
+  // right side wait for the left side's first row.
+  let [l, r] = await Promise.all([nextRun(lr, 'left'), nextRun(rr, 'right')]);
   while (l || r) {
     const cmp = !l ? 1 : !r ? -1 : l.run.khHex < r.run.khHex ? -1 : l.run.khHex > r.run.khHex ? 1 : 0;
     if (cmp === 0) {
@@ -96,8 +97,7 @@ export async function mergePairs(
         res.changed++;
         push('changed', l!.run);
       }
-      l = await nextRun(lr, 'left');
-      r = await nextRun(rr, 'right');
+      [l, r] = await Promise.all([nextRun(lr, 'left'), nextRun(rr, 'right')]);
     } else if (cmp < 0) {
       if (!l!.dup) { res.removed++; push('removed', l!.run); }
       l = await nextRun(lr, 'left');

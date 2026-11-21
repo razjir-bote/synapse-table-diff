@@ -51,6 +51,9 @@ function counting(inner: SideConnector, hook?: StreamHook) {
 const isPairQuery = (s: string) => s.startsWith('SELECT kh, rh, knull');
 const isDetailQuery = (s: string) => s.startsWith('SELECT kh, k_0, v_');
 
+const TYPE_WARNING_1 =
+  '1 column(s) were not compared because their types differ or are unsupported; see the Schema tab.';
+
 const t = (database: string, name: string): TableRef => ({ profileId: 'test', database, schema: 'dbo', name });
 
 function req(name: string, keyColumns: string[], over: Partial<CompareRequest> = {}): CompareRequest {
@@ -81,7 +84,8 @@ describe('runComparison: orders', () => {
     expect(res.leftRows).toBe(50000);
     expect(res.rightRows).toBe(49995);
     expect(res.detailCapped).toBe(false);
-    expect(res.warnings).toEqual([]);
+    // qty is varchar vs int: not compared, and the summary says so
+    expect(res.warnings).toEqual([TYPE_WARNING_1]);
     expect(res.poolTypes).toEqual({ left: 'other', right: 'other' });
 
     const col = (n: string) => res.schema.columns.find((c) => c.name.toLowerCase() === n);
@@ -179,7 +183,32 @@ describe('runComparison: orders', () => {
     expect(stages).not.toContain('rebucket');
     expect(confirmExtraScan).not.toHaveBeenCalled();
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
-    expect(res.rows).toHaveLength(69);
+    // the detail pass reads at most inListCap level-2 buckets
+    expect(res.rows.length).toBeGreaterThan(0);
+    expect(res.rows.length).toBeLessThanOrEqual(10);
+    expect(res.detailCapped).toBe(true);
+  });
+
+  it('more differences than inListCap detail buckets: rows capped by bucket, counts exact, level-2 detail filter', async () => {
+    const detailSql: string[] = [];
+    const hook: StreamHook = (s, src) => { if (isDetailQuery(s)) detailSql.push(s); return src; };
+    const L = counting(connector(DB_A), hook);
+    const R = counting(connector(DB_B), hook);
+    const res = await runComparison(req('orders', ['order_id']), deps({ left: L.c, right: R.c }, { inListCap: 7 }));
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
+    expect(res.rows.length).toBeGreaterThan(0);
+    expect(res.rows.length).toBeLessThanOrEqual(7);
+    expect(res.detailCapped).toBe(true);
+    expect(res.warnings).toContain(`Showing the first ${res.rows.length} of 69 differing rows.`);
+    expect(detailSql).toHaveLength(2);
+    for (const q of detailSql) {
+      expect(q).toMatch(/\) AS f ON f\.b = CASE WHEN knull=1 THEN -1 ELSE b24\/16 END$/);
+      expect(q).not.toContain('b24/4096');
+      expect(q).not.toContain('ORDER BY');
+      const ids = q.slice(q.indexOf('INNER JOIN')).match(/SELECT -?\d+ AS b/g) ?? [];
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.length).toBeLessThanOrEqual(7);
+    }
   });
 
   it('serverless side without confirmExtraScan skips re-bucketing (fail-safe), counts identical', async () => {
@@ -200,7 +229,7 @@ describe('runComparison: orders', () => {
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
     expect(res.rows).toHaveLength(68);
     expect(res.detailCapped).toBe(false);
-    expect(res.warnings).toEqual(['Some differing rows changed during the comparison and could not be shown.']);
+    expect(res.warnings).toEqual([TYPE_WARNING_1, 'Some differing rows changed during the comparison and could not be shown.']);
   });
 
   it('same database, two tables: 0 differences', async () => {
@@ -267,6 +296,34 @@ describe('runComparison: key problems and edge tables', () => {
     }).toEqual({ removed: 0, added: 0, changed: 0, leftRows: 0, rightRows: 0 });
     expect(res.rows).toEqual([]);
     expect(res.warnings).toEqual([]);
+  });
+});
+
+describe('runComparison: hashing and values', () => {
+  it('wide: 250 bigint columns, only the last differs -> changed 1 (row hash not truncated)', async () => {
+    const res = await runComparison(req('wide', ['id']), deps());
+    expect(res.plan.compared).toHaveLength(250);
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 0, added: 0, changed: 1 });
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0]).toMatchObject({ kind: 'changed', key: ['1'], changedColumns: ['c250'] });
+  });
+
+  it('types_t: exact display values; smalldatetime vs datetime2 rounds to the minute with no false differences', async () => {
+    const res = await runComparison(req('types_t', ['id']), deps());
+    expect(res.plan.excluded).toEqual([]);
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 0, added: 0, changed: 1 });
+    expect(res.warnings).toEqual([]);
+    const row = res.rows[0];
+    expect(row).toMatchObject({ kind: 'changed', key: ['1'], changedColumns: ['marker'] });
+    const v = (name: string) => row.left?.[res.plan.compared.findIndex((c) => c.name === name)];
+    expect(v('d')).toBe('1234567890123456789.0123456789');
+    expect(v('dt2')).toBe('2020-01-02 03:04:05.1234567');
+    expect(v('dd')).toBe('2020-01-02');
+    expect(v('tt')).toBe('03:04:05.1234567');
+    expect(v('dto')).toBe('2020-01-02 03:04:05.1234567 +05:30');
+    expect(v('sdt')).toBe('2020-01-01 12:35:00');
+    const r = (name: string) => row.right?.[res.plan.compared.findIndex((c) => c.name === name)];
+    expect(r('sdt')).toBe('2020-01-01 12:35:00.0000000');
   });
 });
 

@@ -133,6 +133,63 @@ INSERT INTO dbo.empty_t (id, v) VALUES (1, 10), (2, 20), (3, 30);
 CREATE TABLE dbo.empty_both (id int NULL, v int NULL);
 GO
 
+---------------------------------------------------------------------------- wide
+-- id + 250 bigint columns c001..c250 with 15-digit values: the row-hash segments total ~4,750 characters,
+-- more than nvarchar(4000). Only c250 (last in hash order) differs, for id = 1.
+USE tablediff_a;
+GO
+DECLARE @i int = 1, @create nvarchar(max) = N'CREATE TABLE dbo.wide (id int NOT NULL',
+  @ins nvarchar(max) = N'INSERT INTO dbo.wide SELECT n';
+WHILE @i <= 250
+BEGIN
+  SET @create += N', c' + RIGHT(N'00' + CAST(@i AS nvarchar(3)), 3) + N' bigint NULL';
+  SET @ins += N', 100000000000000 + ' + CAST(@i AS nvarchar(3)) + N' * 1000 + n';
+  SET @i += 1;
+END;
+SET @create += N');';
+SET @ins += N' FROM (VALUES (1), (2), (3)) AS v(n);';
+EXEC (@create);
+EXEC (@ins);
+GO
+USE tablediff_b;
+GO
+SELECT * INTO dbo.wide FROM tablediff_a.dbo.wide;
+UPDATE dbo.wide SET c250 = c250 + 1 WHERE id = 1;
+GO
+
+---------------------------------------------------------------------------- types_t
+-- Display values (decimal, datetime2(7), date, time, datetimeoffset) and smalldatetime vs datetime2 rounding.
+-- Only id = 1 differs (marker). Rows 2-5 store sdt as smalldatetime on the left (SQL Server rounds to the
+-- nearest minute) and the unrounded datetime2 value on the right: no difference.
+USE tablediff_a;
+GO
+CREATE TABLE dbo.types_t (
+  id int NOT NULL, d decimal(38,10) NULL, dt2 datetime2(7) NULL, dd date NULL, tt time(7) NULL,
+  dto datetimeoffset(7) NULL, sdt smalldatetime NULL, marker int NULL
+);
+INSERT INTO dbo.types_t (id, d, dt2, dd, tt, dto, sdt, marker) VALUES
+  (1, 1234567890123456789.0123456789, '2020-01-02T03:04:05.1234567', '2020-01-02', '03:04:05.1234567',
+   '2020-01-02T03:04:05.1234567+05:30', '2020-01-01T12:35:00', 1),
+  (2, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:45', 0),
+  (3, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:29', 0),
+  (4, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:30', 0),
+  (5, 1, NULL, NULL, NULL, NULL, '2020-01-01T23:59:59', 0);
+GO
+USE tablediff_b;
+GO
+CREATE TABLE dbo.types_t (
+  id int NOT NULL, d decimal(38,10) NULL, dt2 datetime2(7) NULL, dd date NULL, tt time(7) NULL,
+  dto datetimeoffset(7) NULL, sdt datetime2(7) NULL, marker int NULL
+);
+INSERT INTO dbo.types_t (id, d, dt2, dd, tt, dto, sdt, marker) VALUES
+  (1, 1234567890123456789.0123456789, '2020-01-02T03:04:05.1234567', '2020-01-02', '03:04:05.1234567',
+   '2020-01-02T03:04:05.1234567+05:30', '2020-01-01T12:35:00', 2),
+  (2, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:45.1234567', 0),
+  (3, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:29.9999999', 0),
+  (4, 1, NULL, NULL, NULL, NULL, '2020-01-01T12:35:30', 0),
+  (5, 1, NULL, NULL, NULL, NULL, '2020-01-01T23:59:59', 0);
+GO
+
 ---------------------------------------------------------------------------- big
 USE tablediff_a;
 GO
