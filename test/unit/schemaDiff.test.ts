@@ -116,4 +116,20 @@ describe('diffSchema', () => {
     expect(res.plan.keys.map((k) => k.name)).toEqual(['code', 'id']);
     expect(res.plan.compared.map((c) => c.name)).not.toContain('id');
   });
+
+  it('does not flag position when columns are only added or removed', () => {
+    const l = ordered([col('id', 'int'), col('a', 'int'), col('b', 'int')]);
+    const rr = ordered([col('region', 'int'), col('id', 'int'), col('a', 'int'), col('b', 'int')]);
+    const res = diffSchema(l, rr, req());
+    expect(find(res, 'region').status).toBe('added');
+    for (const n of ['id', 'a', 'b']) expect(find(res, n)).toMatchObject({ status: 'same', changes: [] });
+    expect(res.schema.differenceCount).toBe(1);
+    const res2 = diffSchema(rr, l, req());
+    expect(find(res2, 'a').status).toBe('same');
+  });
+
+  it('rejects duplicate key columns case-insensitively', () => {
+    expect(() => diffSchema(left, right, req({ keyColumns: ['id', 'ID'] }))).toThrow(ComparePlanError);
+    expect(() => diffSchema(left, right, req({ keyColumns: ['id', 'ID'] }))).toThrow(/more than once/);
+  });
 });

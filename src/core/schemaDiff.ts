@@ -6,18 +6,26 @@ import type {
 
 type Indexed = { col: ColumnInfo; rank: number };
 
-function index(cols: ColumnInfo[]): Map<string, Indexed> {
+/** Rank (1-based, by ordinal) among columns whose lower-case name is in `only`. */
+function index(cols: ColumnInfo[], only: Set<string>): Map<string, Indexed> {
   const sorted = [...cols].sort((a, b) => a.ordinal - b.ordinal);
   const m = new Map<string, Indexed>();
-  sorted.forEach((col, i) => m.set(col.name.toLowerCase(), { col, rank: i + 1 }));
+  let rank = 0;
+  for (const col of sorted) {
+    const k = col.name.toLowerCase();
+    if (only.has(k)) rank += 1;
+    m.set(k, { col, rank });
+  }
   return m;
 }
 
 export function diffSchema(
   left: ColumnInfo[], right: ColumnInfo[], req: CompareRequest,
 ): { schema: SchemaDiff; plan: ComparePlan } {
-  const L = index(left);
-  const R = index(right);
+  const leftNames = new Set(left.map((c) => c.name.toLowerCase()));
+  const sharedNames = new Set(right.map((c) => c.name.toLowerCase()).filter((n) => leftNames.has(n)));
+  const L = index(left, sharedNames);
+  const R = index(right, sharedNames);
   const opts = { ignoreCase: req.ignoreCase, ignoreTrailingSpaces: req.ignoreTrailingSpaces };
 
   const columns: SchemaColumnDiff[] = [];
@@ -60,6 +68,7 @@ export function diffSchema(
   const keys: ColumnPairPlan[] = [];
   for (const name of req.keyColumns) {
     const k = name.toLowerCase();
+    if (keyLower.has(k)) throw new ComparePlanError(`Key column ${name} is listed more than once`);
     if (excludedByUser.has(k)) throw new ComparePlanError(`Key column ${name} cannot also be excluded`);
     const l = L.get(k);
     const r = R.get(k);
