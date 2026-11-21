@@ -101,3 +101,9 @@ describe('allow-list exports', () => {
     expect(ALLOWED_KEYWORDS.has('MERGE')).toBe(false);
   });
 });
+
+describe('catalog column additions', () => {
+  it('accepts is_unique_constraint as a catalog column', () => {
+    expect(() => assertAllowedSql('SELECT i.name FROM sys.indexes AS i WHERE i.is_unique_constraint = 1')).not.toThrow();
+  });
+});

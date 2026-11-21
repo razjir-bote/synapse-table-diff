@@ -33,7 +33,7 @@ const TYPE_SET: ReadonlySet<string> = new Set(TYPE_NAMES.map((n) => n.toUpperCas
 const SYS_CATALOG_SET: ReadonlySet<string> = new Set(SYS_CATALOG_NAMES);
 
 const ALIAS_RE =
-  /^(kh|rh|knull|b24|b1|b2|cnt|dk|s1|s2|k_\d+|v_\d+|n_\d+|h|x|name|type_name|max_length|precision|scale|is_nullable|column_id|schema_name|object_name|object_type|is_primary_key|engine_edition|key_ordinal|c|t|s|o|i|ic|object_id|user_type_id|schema_id|type|index_id|is_unique)$/;
+  /^(kh|rh|knull|b24|b1|b2|cnt|dk|s1|s2|k_\d+|v_\d+|n_\d+|h|x|name|type_name|max_length|precision|scale|is_nullable|column_id|schema_name|object_name|object_type|is_primary_key|is_unique_constraint|engine_edition|key_ordinal|c|t|s|o|i|ic|object_id|user_type_id|schema_id|type|index_id|is_unique)$/;
 
 type TokKind = 'word' | 'bracket' | 'literal' | 'number' | 'op' | 'hash' | 'other';
 
