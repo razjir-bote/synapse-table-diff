@@ -1,0 +1,17 @@
+import { describe, it, expect } from 'vitest';
+import { pageRows, totalsByKind } from '../../src/ui/resultsPaging';
+import type { DiffRow } from '../../src/core/types';
+
+const r = (kind: DiffRow['kind'], k: string): DiffRow => ({ kind, key: [k], changedColumns: [] });
+const rows = [r('added', '1'), r('changed', '2'), r('added', '3'), r('removed', '4')];
+
+describe('resultsPaging', () => {
+  it('counts held rows by kind', () => {
+    expect(totalsByKind(rows)).toEqual({ all: 4, added: 2, removed: 1, changed: 1 });
+  });
+  it('serves filtered pages', () => {
+    expect(pageRows(rows, 'added', 0, 10).map((x) => x.key[0])).toEqual(['1', '3']);
+    expect(pageRows(rows, 'added', 1, 1).map((x) => x.key[0])).toEqual(['3']);
+    expect(pageRows(rows, 'all', 2, 200).map((x) => x.key[0])).toEqual(['3', '4']);
+  });
+});
