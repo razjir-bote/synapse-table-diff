@@ -2,7 +2,7 @@
   "name": "synapse-table-diff",
   "displayName": "Table Diff",
   "description": "Compare SQL Server and Azure Synapse tables",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -49,7 +49,7 @@
     "test": "vitest run -c vitest.config.ts",
     "test:integration": "vitest run -c vitest.integration.config.ts",
     "typecheck": "tsc --noEmit",
-    "package": "vsce package"
+    "package": "vsce package --allow-missing-repository --skip-license"
   },
   "dependencies": {
     "mssql": "^11.0.1"
