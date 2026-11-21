@@ -71,7 +71,8 @@ describe('queries', () => {
     expect(p).toMatch(/^SELECT kh, rh, knull, CASE WHEN knull=1 THEN -1 ELSE b24\/16 END AS b2, k_0\n/);
     expect(p).toContain('[id] AS k_0');
     expect(p.endsWith('ORDER BY kh')).toBe(true);
-    expect(p).toContain('WHERE CASE WHEN knull=1 THEN -1 ELSE b24/4096 END IN (3,4)');
+    expect(p).toContain(') AS x\nINNER JOIN (SELECT 3 AS b UNION ALL SELECT 4 AS b) AS f ON f.b = CASE WHEN knull=1 THEN -1 ELSE b24/4096 END\nORDER BY kh');
+    expect(p).not.toContain(' IN (');
     const d = detailQuery(plan, 'left', ref, undefined, within1);
     expect(d).toMatch(/^SELECT kh, k_0, v_0, v_1, n_0, n_1\n/);
     expect(d).toContain('[amount] AS v_0');
@@ -109,8 +110,21 @@ describe('queries', () => {
 
   it('renders level-2 within filters and omits empty ones', () => {
     const q = pairQuery(plan, 'left', ref, undefined, { level: 2, ids: [5, 9] });
-    expect(q).toContain('CASE WHEN knull=1 THEN -1 ELSE b24/16 END IN (5,9)');
-    expect(pairQuery(plan, 'left', ref, undefined, { level: 2, ids: [] })).not.toContain('IN (');
+    expect(q).toContain('INNER JOIN (SELECT 5 AS b UNION ALL SELECT 9 AS b) AS f ON f.b = CASE WHEN knull=1 THEN -1 ELSE b24/16 END');
+    const none = pairQuery(plan, 'left', ref, undefined, { level: 2, ids: [] });
+    expect(none).not.toContain('IN (');
+    expect(none).not.toContain('JOIN');
+  });
+
+  // A large IN list on the computed bucket expression made SQL Server re-evaluate the key hash once per
+  // list element (a 70-id list took ~12s on 50k rows vs <1s for a full scan). A join to a constant id
+  // table evaluates it once per row.
+  it('filters buckets with a join to a de-duplicated id list (also for the bucket query, -1 included)', () => {
+    const q = bucketQuery(plan, 'left', ref, "x = 1", 2, { level: 1, ids: [7, -1, 7] });
+    expect(q).toContain('INNER JOIN (SELECT -1 AS b UNION ALL SELECT 7 AS b) AS f ON f.b = CASE WHEN knull=1 THEN -1 ELSE b24/4096 END\nGROUP BY');
+    expect(() => assertAllowedSql(q)).not.toThrow();
+    const ids = Array.from({ length: 5000 }, (_, i) => i);
+    expect(() => assertAllowedSql(detailQuery(plan, 'left', ref, undefined, { level: 2, ids }))).not.toThrow();
   });
 
   it('has no comments', () => {

@@ -82,8 +82,12 @@ function hashedTable(
   const from =
     `FROM (SELECT h.*, CAST(SUBSTRING(h.kh,1,3) AS int) AS b24 FROM (SELECT ${inner} ` +
     `FROM ${qualifiedName(t)}${where}) AS h) AS x`;
-  const w = within && within.ids.length > 0 ? `\nWHERE ${bucketExpr(within.level)} IN (${within.ids.join(',')})` : '';
-  return { from, where: w };
+  // Join to a constant id table rather than `<bucket expr> IN (...)`: SQL Server expands a long IN list on
+  // a computed expression into ORs and re-evaluates the key hash for each element (minutes on millions of rows).
+  if (!within || within.ids.length === 0) return { from, where: '' };
+  const ids = [...new Set(within.ids.map((b) => Math.trunc(Number(b))))].sort((a, b) => a - b);
+  const idTable = ids.map((b) => `SELECT ${b} AS b`).join(' UNION ALL ');
+  return { from: `${from}\nINNER JOIN (${idTable}) AS f ON f.b = ${bucketExpr(within.level)}`, where: '' };
 }
 
 export function bucketQuery(
