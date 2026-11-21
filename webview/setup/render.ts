@@ -18,6 +18,9 @@ export interface SetupState {
   filter: string;
   ignoreCase: boolean;
   ignoreTrailingSpaces: boolean;
+  error?: string;
+  /** Keys/exclusions from a pre-filled request, applied once both sides are described. */
+  pendingInitial?: { keys: string[]; excluded: string[] };
 }
 export interface SetupActions {
   onProfile(side: Side, profileId: string): void;
@@ -224,12 +227,7 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   reason.dataset.role = 'reason';
   root.appendChild(reason);
 
-  const err = el('div', 'error');
+  const err = el('div', 'error', state.error ?? '');
   err.dataset.role = 'error';
   root.appendChild(err);
-}
-
-export function showError(root: HTMLElement, message: string): void {
-  const e = root.querySelector('[data-role="error"]');
-  if (e) e.textContent = message;
 }

@@ -1,6 +1,7 @@
 import type { CompareRequest, Side } from '../../src/core/types';
 import type { HostToSetup, SetupToHost } from '../../src/ui/protocol';
-import { canRun, defaultKey, renderSetup, sharedColumns, showError, type SetupActions, type SetupState } from './render';
+import { applyHostMessage } from './reducer';
+import { canRun, renderSetup, type SetupActions, type SetupState } from './render';
 
 declare function acquireVsCodeApi(): { postMessage(m: SetupToHost): void };
 const vscode = acquireVsCodeApi();
@@ -16,30 +17,14 @@ let state: SetupState = {
   ignoreCase: false,
   ignoreTrailingSpaces: false,
 };
-// Keys/exclusions from a pre-filled request, applied once both sides are described.
-let pendingInitial: { keys: string[]; excluded: string[] } | undefined;
-
 const lc = (s: string) => s.toLowerCase();
 const post = (m: SetupToHost) => vscode.postMessage(m);
 const draw = () => renderSetup(root, state, actions);
 
 function resetColumns(): void {
+  state.pendingInitial = undefined;
   state.keyColumns = [];
   state.excludedColumns = [];
-}
-
-function applyDescribed(): void {
-  const { left, right } = state.sides;
-  if (left.columns.length === 0 || right.columns.length === 0) return;
-  const shared = new Set(sharedColumns(state).map(lc));
-  if (pendingInitial) {
-    state.keyColumns = pendingInitial.keys.filter((k) => shared.has(lc(k)));
-    state.excludedColumns = pendingInitial.excluded.filter((k) => shared.has(lc(k)));
-    pendingInitial = undefined;
-  } else {
-    state.keyColumns = defaultKey(state);
-    state.excludedColumns = [];
-  }
 }
 
 const actions: SetupActions = {
@@ -122,7 +107,7 @@ function init(profiles: { id: string; name: string }[], initial?: CompareRequest
     ignoreCase: initial.ignoreCase,
     ignoreTrailingSpaces: initial.ignoreTrailingSpaces,
   };
-  pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
+  state.pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
   for (const side of ['left', 'right'] as Side[]) {
     const t = initial[side];
     state.sides[side].profileId = t.profileId;
@@ -141,25 +126,8 @@ window.addEventListener('message', (e: MessageEvent<HostToSetup>) => {
     case 'init':
       init(m.profiles, m.initial);
       break;
-    case 'databases':
-      state.sides[m.side].databases = m.names;
-      draw();
-      break;
-    case 'objects':
-      state.sides[m.side].objects = m.objects;
-      draw();
-      break;
-    case 'described': {
-      const s = state.sides[m.side];
-      s.columns = m.columns;
-      s.declaredKey = m.declaredKey;
-      s.poolType = m.poolType;
-      applyDescribed();
-      draw();
-      break;
-    }
-    case 'error':
-      showError(root, m.message);
+    default:
+      if (applyHostMessage(state, m)) draw();
       break;
   }
 });

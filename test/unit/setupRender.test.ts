@@ -109,3 +109,58 @@ describe('escaping and prefill', () => {
     expect((root.querySelector('[data-role="ignoreCase"]') as HTMLInputElement).checked).toBe(true);
   });
 });
+
+import { applyHostMessage } from '../../webview/setup/reducer';
+
+describe('applyHostMessage', () => {
+  const ref = (name: string) => ({ profileId: 'p', database: 'db', schema: 'dbo', name });
+  const described = (name: string, cols: string[]) => ({
+    type: 'described' as const, side: 'left' as const, ref: ref(name),
+    columns: cols.map((c, i) => col(c, i + 1)), declaredKey: [], poolType: 'dedicated' as const,
+  });
+  const fresh = () => {
+    const s = state();
+    s.sides.left = { ...side([]), table: { schema: 'dbo', name: 'B' }, columns: [] };
+    return s;
+  };
+
+  it('drops a late described for a previously selected table', () => {
+    const s = fresh();
+    expect(applyHostMessage(s, described('A', ['x']))).toBe(false);
+    expect(s.sides.left.columns).toEqual([]);
+    expect(applyHostMessage(s, described('B', ['y']))).toBe(true);
+    expect(s.sides.left.columns.map((c) => c.name)).toEqual(['y']);
+  });
+  it('drops described after the side was reset', () => {
+    const s = fresh();
+    s.sides.left = { databases: [], objects: [], columns: [], declaredKey: [], profileId: 'p' };
+    expect(applyHostMessage(s, described('B', ['y']))).toBe(false);
+    expect(s.sides.left.columns).toEqual([]);
+  });
+  it('drops late objects/databases for another profile or database', () => {
+    const s = fresh();
+    expect(applyHostMessage(s, { type: 'objects', side: 'left', profileId: 'p', database: 'other', objects: [{ schema: 'a', name: 'b', kind: 'table' }] })).toBe(false);
+    expect(applyHostMessage(s, { type: 'databases', side: 'left', profileId: 'zzz', names: ['q'] })).toBe(false);
+    expect(s.sides.left.objects).toHaveLength(1);
+    expect(s.sides.left.databases).toEqual(['db']);
+    expect(applyHostMessage(s, { type: 'databases', side: 'left', profileId: 'p', names: ['q'] })).toBe(true);
+  });
+  it('clears pendingInitial when a side errors', () => {
+    const s = fresh();
+    s.pendingInitial = { keys: ['Id'], excluded: [] };
+    applyHostMessage(s, { type: 'error', message: 'boom', side: 'left' });
+    expect(s.pendingInitial).toBeUndefined();
+    expect(s.error).toBe('boom');
+  });
+});
+
+describe('error persistence', () => {
+  it('renders state.error and keeps it across re-renders', () => {
+    const s = state({ error: 'Login failed <b>' });
+    const root = document.createElement('div');
+    renderSetup(root, s);
+    renderSetup(root, s);
+    expect(root.querySelector('[data-role="error"]')!.textContent).toBe('Login failed <b>');
+    expect(root.querySelector('b')).toBeNull();
+  });
+});

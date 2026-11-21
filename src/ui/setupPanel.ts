@@ -114,7 +114,7 @@ export class SetupPanel {
         case 'listDatabases': {
           const db = this.deps.store.get(m.profileId)?.database || 'master';
           const rows = await this.withRunner(m.profileId, db, (r) => r.query<{ name: string }>(listDatabasesQuery()));
-          this.post({ type: 'databases', side: m.side, names: rows.map((r) => r.name) });
+          this.post({ type: 'databases', side: m.side, profileId: m.profileId, names: rows.map((r) => r.name) });
           break;
         }
         case 'listObjects': {
@@ -123,6 +123,8 @@ export class SetupPanel {
           this.post({
             type: 'objects',
             side: m.side,
+            profileId: m.profileId,
+            database: m.database,
             objects: rows.map((r) => ({
               schema: r.schema_name,
               name: r.object_name,
@@ -139,7 +141,8 @@ export class SetupPanel {
           break;
       }
     } catch (e) {
-      this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+      const side = 'side' in m ? m.side : undefined;
+      this.post({ type: 'error', message: e instanceof Error ? e.message : String(e), side });
     }
   }
 
@@ -154,7 +157,7 @@ export class SetupPanel {
       } catch {
         declaredKey = [];
       }
-      this.post({ type: 'described', side, columns: mapColumns(cols), declaredKey, poolType: connector.poolType });
+      this.post({ type: 'described', side, ref, columns: mapColumns(cols), declaredKey, poolType: connector.poolType });
     } finally {
       await runner.close();
     }
