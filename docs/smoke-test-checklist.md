@@ -2,8 +2,8 @@
 
 The automated tests run only against a local SQL Server 2022. This checklist is the
 manual check against **your real Synapse pools**. Run it before relying on a release.
-Anything that fails here is a bug to report, with the step number, the observed
-message and, if possible, the query text from the output channel.
+Anything that fails here is a bug to report, with the step number and the observed
+message.
 
 ## Setup
 
@@ -209,6 +209,32 @@ message). The run does not hang, and no results panel opens for the failed run.
    `tablediff_b.dbo.orders`, key column `order_id`.
 
 **Expected:** The summary shows Removed 10, Added 5, Changed 54. The run completes in a few seconds.
+A banner says `1 column(s) were not compared because their types differ or are unsupported; see the
+Schema tab.` (`qty` is `varchar` on the left and `int` on the right).
+
+- [ ] Pass
+- [ ] Fail
+
+### 16. External table on serverless
+
+**Action:** On the serverless pool, open the table list for a database that has an external table.
+Pick the external table on one side (and a matching table or external table on the other) and compare.
+
+**Expected:** The external table is listed as `<schema>.<name> (external table)`. The comparison
+completes with no SQL error and the counts match what you expect.
+
+- [ ] Pass
+- [ ] Fail
+
+### 17. More than 5,000 differences on a large table
+
+**Action:** Compare two large tables (10 million rows or more) that differ in more than 5,000 rows
+spread across the table, with default settings. Record the duration.
+
+**Expected:** The counts are exact. A banner says `Showing the first N of M differing rows.` with N at
+most the number of rows in 5,000 detail buckets (about 5,000) and M the full count. The changed-rows
+stage does not take noticeably longer than the checksum stage.
+Duration ______
 
 - [ ] Pass
 - [ ] Fail

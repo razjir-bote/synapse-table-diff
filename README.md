@@ -10,12 +10,13 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 ## Features
 
-- Compare two tables or views, on the same pool or across a dedicated and a serverless pool.
+- Compare two tables, views or external tables, on the same pool or across a dedicated and a serverless pool.
 - Schema diff: added or removed columns, and type, nullability and position changes.
 - Data diff matched by one or more key columns: added, removed and changed rows, with the
   changed cells named.
 - Never copies whole tables into VS Code. Comparison runs as a fixed number of checksum
-  passes, and only the differing rows are fetched.
+  passes. Only the rows in the checksum buckets that contain the shown differences are read for
+  display, and only the differing rows among them are kept.
 - Key problems (duplicate and NULL keys) are reported on their own tab. They are never
   silently counted as matches.
 - Export differences to CSV, or open them in VS Code's diff editor.
@@ -49,7 +50,7 @@ To remove a connection, run **Table Diff: Remove Connection**.
 ## Running a comparison
 
 1. Run **Table Diff: Compare Tables…**.
-2. Choose the **Left** and **Right** connection, then the schema and table or view on each side.
+2. Choose the **Left** and **Right** connection, then the schema and table, view or external table on each side.
 3. Choose one or more **key columns**. Declared primary or unique keys are pre-filled when they exist.
 4. Choose **Columns to compare**. By default every shared column is compared. Exclude load
    timestamps or other columns that should not count as differences.
@@ -75,8 +76,10 @@ The summary header shows:
 | Duration | Total run time. |
 | Pools | The pool type detected for each side. |
 
-A warning banner appears if the result is incomplete, for example because of duplicate keys, a
-cancellation or an error.
+A warning banner appears if the result is incomplete, for example because of duplicate keys, because
+only some of the differing rows are shown, or because some shared columns were not compared (their types
+differ or are unsupported). A cancelled or failed run opens no results: cancelling shows the message
+`Comparison cancelled.`, and an error shows an error message.
 
 The tabs are:
 
@@ -98,9 +101,9 @@ All settings are under `tableDiff.*` and are read at the start of each run.
 | Setting | Default | Purpose |
 |---|---|---|
 | `tableDiff.pairLimit` | `2000000` | Maximum number of row pairs compared in the narrowing pass. If more mismatched rows than this remain, the extension re-buckets once more, which on serverless asks for confirmation first. |
-| `tableDiff.detailLimit` | `100000` | Maximum number of differing rows fetched for the browsable Data tab. Counts are always exact. The UI says so when the cap is hit. |
-| `tableDiff.inListCap` | `5000` | Maximum number of keys in one `IN` list. |
-| `tableDiff.queryTimeoutSeconds` | `3600` | Query timeout in seconds. |
+| `tableDiff.detailLimit` | `100000` | Maximum number of differing rows fetched for the browsable Data tab (at most 1,000,000). Counts are always exact. The UI says so when the cap is hit. |
+| `tableDiff.inListCap` | `5000` | Maximum number of bucket ids per narrowing or detail filter (1 to 20,000). The Data tab shows only the differences in the first this-many detail buckets, so with many differences it can show fewer rows than `detailLimit`; counts stay exact and a banner says how many rows are shown. |
+| `tableDiff.queryTimeoutSeconds` | `3600` | Query timeout in seconds (at least 30). |
 
 The **Trust the server certificate?** prompt in Add Connection is opt-in (default **No**). Choose **Yes**
 only for a local or development server with a self-signed certificate. Trusting a certificate on a
