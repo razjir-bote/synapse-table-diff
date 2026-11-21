@@ -55,8 +55,8 @@ describe('queries', () => {
     expect(q).toContain('CASE WHEN knull=1 THEN -1 ELSE b24/4096 END AS b1');
     expect(q).toContain('GROUP BY CASE WHEN knull=1 THEN -1 ELSE b24/4096 END');
     expect(q).toContain('COUNT_BIG(*) AS cnt, COUNT_BIG(DISTINCT kh) AS dk');
-    expect(q).toContain('SUM(CAST(CAST(SUBSTRING(rh,1,8) AS bigint) AS decimal(38,0))) AS s1');
-    expect(q).toContain('SUM(CAST(CAST(SUBSTRING(rh,9,8) AS bigint) AS decimal(38,0))) AS s2');
+    expect(q).toContain('CAST(SUM(CAST(CAST(SUBSTRING(rh,1,8) AS bigint) AS decimal(38,0))) AS varchar(40)) AS s1');
+    expect(q).toContain('CAST(SUM(CAST(CAST(SUBSTRING(rh,9,8) AS bigint) AS decimal(38,0))) AS varchar(40)) AS s2');
     const rowSegs = plan.compared.map((c) => SEG(
       c.name === 'code' ? 'CAST([code] AS nvarchar(max))' : 'CONVERT(nvarchar(50), CAST([amount] AS decimal(38,2)))',
     ));
@@ -125,6 +125,14 @@ describe('queries', () => {
     expect(() => assertAllowedSql(q)).not.toThrow();
     const ids = Array.from({ length: 5000 }, (_, i) => i);
     expect(() => assertAllowedSql(detailQuery(plan, 'left', ref, undefined, { level: 2, ids }))).not.toThrow();
+  });
+
+  it('rejects non-integer bucket ids', () => {
+    for (const bad of [1.5, NaN, Infinity]) {
+      expect(() => pairQuery(plan, 'left', ref, undefined, { level: 1, ids: [3, bad] })).toThrow(/bucket id/i);
+    }
+    expect(() => pairQuery(plan, 'left', ref, undefined, { level: 1, ids: ['1; DROP TABLE x' as unknown as number] }))
+      .toThrow(/bucket id/i);
   });
 
   it('has no comments', () => {

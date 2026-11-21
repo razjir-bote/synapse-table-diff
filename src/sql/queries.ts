@@ -85,7 +85,10 @@ function hashedTable(
   // Join to a constant id table rather than `<bucket expr> IN (...)`: SQL Server expands a long IN list on
   // a computed expression into ORs and re-evaluates the key hash for each element (minutes on millions of rows).
   if (!within || within.ids.length === 0) return { from, where: '' };
-  const ids = [...new Set(within.ids.map((b) => Math.trunc(Number(b))))].sort((a, b) => a - b);
+  for (const b of within.ids) {
+    if (!Number.isInteger(b)) throw new Error(`Invalid bucket id: ${String(b)}`);
+  }
+  const ids = [...new Set(within.ids)].sort((a, b) => a - b);
   const idTable = ids.map((b) => `SELECT ${b} AS b`).join(' UNION ALL ');
   return { from: `${from}\nINNER JOIN (${idTable}) AS f ON f.b = ${bucketExpr(within.level)}`, where: '' };
 }
@@ -101,7 +104,8 @@ export function bucketQuery(
   const { from, where } = hashedTable(plan, side, t, filter, [], within);
   const b = bucketExpr(level);
   const alias = level === 1 ? 'b1' : 'b2';
-  const sum = (a: number) => `SUM(CAST(CAST(SUBSTRING(rh,${a},8) AS bigint) AS decimal(38,0)))`;
+  // Cast to varchar so the 38-digit sums reach the client exactly (the driver returns decimal as a JS double).
+  const sum = (a: number) => `CAST(SUM(CAST(CAST(SUBSTRING(rh,${a},8) AS bigint) AS decimal(38,0))) AS varchar(40))`;
   return (
     `SELECT ${b} AS ${alias}, COUNT_BIG(*) AS cnt, COUNT_BIG(DISTINCT kh) AS dk, ` +
     `${sum(1)} AS s1, ${sum(9)} AS s2\n${from}${where}\nGROUP BY ${b}`

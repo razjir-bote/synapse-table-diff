@@ -19,6 +19,7 @@ export interface PipelineDeps {
   confirmExtraScan?: (serverlessSides: Side[]) => Promise<boolean>;
 }
 
+export const VANISHED_ROWS_WARNING = 'Some differing rows changed during the comparison and could not be shown.';
 export const KEY_PROBLEM_WARNING =
   'Duplicate or NULL keys found; those keys are excluded, so the data diff is incomplete for them.';
 
@@ -33,9 +34,17 @@ function checkAbort(signal?: AbortSignal): void {
   if (signal?.aborted) throw cancelled();
 }
 
-/** Opens both sides in parallel, runs `fn`, and always closes whatever was opened. */
-async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners) => Promise<T>): Promise<T> {
+/**
+ * Opens both sides in parallel, runs `fn`, and always closes whatever was opened.
+ * `fn` gets a per-pass signal linked to `deps.signal`. If `fn` fails (e.g. one side's query errors), the pass
+ * signal is aborted before closing, which cancels the other side's in-flight query or paused stream. Otherwise
+ * pool.close() would wait for that request forever. The original error is rethrown.
+ */
+async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners, signal: AbortSignal) => Promise<T>): Promise<T> {
   checkAbort(deps.signal);
+  const pass = new AbortController();
+  const onOuterAbort = () => pass.abort();
+  deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
   const opened = await Promise.allSettled([deps.left.open(), deps.right.open()]);
   const close = async () => {
     await Promise.allSettled(
@@ -49,8 +58,12 @@ async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners) => Promise<T>
       right: (opened[1] as PromiseFulfilledResult<QueryRunner>).value,
     };
     checkAbort(deps.signal);
-    return await fn(runners);
+    return await fn(runners, pass.signal);
+  } catch (err) {
+    pass.abort();
+    throw err;
   } finally {
+    deps.signal?.removeEventListener('abort', onOuterAbort);
     await close();
   }
 }
@@ -107,8 +120,8 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
   try {
     // 1. schema
     progress('schema');
-    const cols = await withRunners(deps, async (r) => {
-      const [l, rr] = await Promise.all(SIDES.map((s) => r[s].query(columnsQuery(tables[s]), signal)));
+    const cols = await withRunners(deps, async (r, sig) => {
+      const [l, rr] = await Promise.all(SIDES.map((s) => r[s].query(columnsQuery(tables[s]), sig)));
       return { left: l.map(toColumn), right: rr.map(toColumn) };
     });
     checkAbort(signal);
@@ -117,9 +130,9 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
     // 2. level-1 checksums
     progress('checksums');
     const bucketsAt = (level: 1 | 2, within?: BucketFilter) =>
-      withRunners(deps, async (r) => {
+      withRunners(deps, async (r, sig) => {
         const [l, rr] = await Promise.all(
-          SIDES.map((s) => r[s].query(bucketQuery(plan, s, tables[s], req.filter, level, within), signal)),
+          SIDES.map((s) => r[s].query(bucketQuery(plan, s, tables[s], req.filter, level, within), sig)),
         );
         return compareBuckets(l.map((x) => toBucket(x, level)), rr.map((x) => toBucket(x, level)));
       });
@@ -148,14 +161,17 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
     // 3. optional level-2 re-bucketing
     const l1Ids = uniqSorted([...l1.mismatched, ...l1.problem]);
     let pairFilter = capFilter(1, l1Ids, limits.inListCap);
-    if (l1.rowsInScope > limits.pairLimit) {
+    // Re-bucketing only helps when its level-1 scope fits in an id list: the resulting level-2 list is at least
+    // as long, so over the cap pass 2 would fall back to the same scope and the extra scan would be wasted.
+    const within = l1Ids.filter((b) => b !== -1);
+    if (l1.rowsInScope > limits.pairLimit && within.length > 0 && within.length <= limits.inListCap) {
       const serverless = SIDES.filter((s) => deps[s].poolType === 'serverless');
-      const go = serverless.length === 0 || !deps.confirmExtraScan || (await deps.confirmExtraScan(serverless));
+      // Fail-safe: an extra scan on a serverless side needs an explicit yes.
+      const go = serverless.length === 0 || (deps.confirmExtraScan ? await deps.confirmExtraScan(serverless) : false);
       checkAbort(signal);
-      const within = l1Ids.filter((b) => b !== -1);
-      if (go && within.length > 0) {
+      if (go) {
         progress('rebucket');
-        const l2 = await bucketsAt(2, capFilter(1, within, limits.inListCap));
+        const l2 = await bucketsAt(2, { level: 1, ids: within });
         checkAbort(signal);
         const l2Ids = [...l2.mismatched, ...l2.problem];
         if (l1Ids.includes(-1)) l2Ids.push(-1);
@@ -165,12 +181,12 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
 
     // 4. pair compare
     progress('compare');
-    const merge = await withRunners(deps, (r) =>
+    const merge = await withRunners(deps, (r, sig) =>
       mergePairs(
-        toPairs(r.left.stream(pairQuery(plan, 'left', tables.left, req.filter, pairFilter), signal), plan.keys.length),
-        toPairs(r.right.stream(pairQuery(plan, 'right', tables.right, req.filter, pairFilter), signal), plan.keys.length),
+        toPairs(r.left.stream(pairQuery(plan, 'left', tables.left, req.filter, pairFilter), sig), plan.keys.length),
+        toPairs(r.right.stream(pairQuery(plan, 'right', tables.right, req.filter, pairFilter), sig), plan.keys.length),
         limits.detailLimit,
-        signal,
+        sig,
       ));
     checkAbort(signal);
 
@@ -180,7 +196,7 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
 
     // 6. result
     const total = merge.added + merge.removed + merge.changed;
-    const detailCapped = rows.length < total;
+    const detailCapped = merge.selected.length < total; // the detail limit only
     const keyProblems: KeyProblems = {
       ...keyProblemsBase(l1),
       duplicateKeys: merge.duplicateSamples,
@@ -191,6 +207,7 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
       + keyProblems.rightNullKeyRows > 0 || merge.duplicateSamples.length > 0 || merge.nullKeySamples.length > 0;
     if (hasKeyProblems) warnings.push(KEY_PROBLEM_WARNING);
     if (detailCapped) warnings.push(`Showing the first ${rows.length} of ${total} differing rows.`);
+    if (rows.length < merge.selected.length) warnings.push(VANISHED_ROWS_WARNING);
 
     return {
       ...base,
@@ -217,7 +234,7 @@ async function fetchDetails(
   deps: PipelineDeps,
   progress: (stage: Stage, detail?: string) => void,
 ): Promise<DiffRow[]> {
-  const { signal, limits } = deps;
+  const { limits } = deps;
   progress('details');
   const expected: Record<Side, Set<string>> = { left: new Set(), right: new Set() };
   for (const k of selected) {
@@ -226,13 +243,13 @@ async function fetchDetails(
   }
   const filter = capFilter(2, uniqSorted(selected.map((k) => k.b2)), limits.inListCap);
 
-  const found = await withRunners(deps, async (r) => {
+  const found = await withRunners(deps, async (r, sig) => {
     const collect = async (side: Side): Promise<Map<string, Record<string, unknown>>> => {
       const want = expected[side];
       const out = new Map<string, Record<string, unknown>>();
       if (want.size === 0) return out;
       const q = detailQuery(plan, side, tables[side], req.filter, filter);
-      for await (const row of r[side].stream<Record<string, unknown>>(q, signal)) {
+      for await (const row of r[side].stream<Record<string, unknown>>(q, sig)) {
         const hex = (row.kh as Buffer).toString('hex');
         if (want.has(hex) && !out.has(hex)) {
           out.set(hex, row);

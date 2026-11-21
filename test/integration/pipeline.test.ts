@@ -23,8 +23,12 @@ function connector(database: string, poolType: PoolType = 'other'): SideConnecto
   };
 }
 
-/** Wraps a connector, counting opens and closes. */
-function counting(inner: SideConnector) {
+type StreamHook = (
+  sqlText: string, src: AsyncIterable<Record<string, unknown>>,
+) => AsyncIterable<Record<string, unknown>>;
+
+/** Wraps a connector, counting opens and closes; `hook` can rewrite each stream. */
+function counting(inner: SideConnector, hook?: StreamHook) {
   const stats = { opens: 0, closes: 0 };
   const c: SideConnector = {
     label: inner.label,
@@ -34,13 +38,18 @@ function counting(inner: SideConnector) {
       stats.opens++;
       return {
         query: (s, sig) => r.query(s, sig),
-        stream: (s, sig) => r.stream(s, sig),
+        stream: <T,>(s: string, sig?: AbortSignal) => (hook
+          ? hook(s, r.stream<Record<string, unknown>>(s, sig))
+          : r.stream<Record<string, unknown>>(s, sig)) as AsyncIterable<T>,
         close: async () => { stats.closes++; await r.close(); },
       };
     },
   };
   return { c, stats };
 }
+
+const isPairQuery = (s: string) => s.startsWith('SELECT kh, rh, knull');
+const isDetailQuery = (s: string) => s.startsWith('SELECT kh, k_0, v_');
 
 const t = (database: string, name: string): TableRef => ({ profileId: 'test', database, schema: 'dbo', name });
 
@@ -159,10 +168,39 @@ describe('runComparison: orders', () => {
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
   });
 
-  it('pairLimit 100 with inListCap 10 falls back to level-1 ids, counts identical', async () => {
-    const res = await runComparison(req('orders', ['order_id']), deps({}, { pairLimit: 100, inListCap: 10 }));
+  it('pairLimit 100 with level-1 ids over inListCap skips the useless rebucket (no prompt), counts identical', async () => {
+    const stages: Stage[] = [];
+    const confirmExtraScan = vi.fn(async () => true);
+    const res = await runComparison(
+      req('orders', ['order_id']),
+      deps({ right: connector(DB_B, 'serverless'), confirmExtraScan, onProgress: (s) => { stages.push(s); } },
+        { pairLimit: 100, inListCap: 10 }),
+    );
+    expect(stages).not.toContain('rebucket');
+    expect(confirmExtraScan).not.toHaveBeenCalled();
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
     expect(res.rows).toHaveLength(69);
+  });
+
+  it('serverless side without confirmExtraScan skips re-bucketing (fail-safe), counts identical', async () => {
+    const stages: Stage[] = [];
+    const res = await runComparison(
+      req('orders', ['order_id']),
+      deps({ left: connector(DB_A, 'serverless'), onProgress: (s) => { stages.push(s); } }, { pairLimit: 100 }),
+    );
+    expect(stages).not.toContain('rebucket');
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
+  });
+
+  it('a detail row that vanished between passes gets its own warning, not the cap', async () => {
+    const R = counting(connector(DB_B), (s, src) => (isDetailQuery(s)
+      ? (async function* () { for await (const r of src) if (r.k_0 !== 200) yield r; })()
+      : src));
+    const res = await runComparison(req('orders', ['order_id']), deps({ right: R.c }));
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
+    expect(res.rows).toHaveLength(68);
+    expect(res.detailCapped).toBe(false);
+    expect(res.warnings).toEqual(['Some differing rows changed during the comparison and could not be shown.']);
   });
 
   it('same database, two tables: 0 differences', async () => {
@@ -191,6 +229,20 @@ describe('runComparison: key problems and edge tables', () => {
     );
     expect(res.rows).toHaveLength(1);
     expect(res.rows[0]).toMatchObject({ kind: 'changed', key: ['2', '1'], changedColumns: ['sku'] });
+  });
+
+  it('only the -1 (NULL key) bucket in scope: no rebucket prompt or scan', async () => {
+    const stages: Stage[] = [];
+    const confirmExtraScan = vi.fn(async () => true);
+    const res = await runComparison(
+      req('lines', ['order_id', 'line_no'], { filter: 'order_id <> 2 AND NOT (order_id = 1 AND line_no = 1)' }),
+      deps({ right: connector(DB_B, 'serverless'), confirmExtraScan, onProgress: (s) => { stages.push(s); } },
+        { pairLimit: 0 }),
+    );
+    expect(confirmExtraScan).not.toHaveBeenCalled();
+    expect(stages).not.toContain('rebucket');
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 0, added: 0, changed: 0 });
+    expect(res.keyProblems.nullKeys).toEqual([{ side: 'right', key: ['50', null] }]);
   });
 
   it('odd name]x: 0 differences', async () => {
@@ -255,6 +307,48 @@ describe('runComparison: cancellation', () => {
 
 const BIG_ROWS = Number(process.env.TABLEDIFF_BIG_ROWS ?? 3_000_000);
 const BIG_CHANGED = BIG_ROWS >= 7 ? Math.floor((BIG_ROWS - 7) / 3000) + 1 : 0; // ids with id % 3000 = 7
+
+describe('runComparison: one side fails mid-stream', () => {
+  it('surfaces the original error promptly and closes every runner (other side paused at high water)', async () => {
+    const boom = new Error('simulated stream failure');
+    const L = counting(connector(DB_A));
+    const R = counting(connector(DB_B), (s, src) => (isPairQuery(s)
+      ? (async function* () {
+        let n = 0;
+        for await (const r of src) { if (++n > 5000) throw boom; yield r; }
+      })()
+      : src));
+    const started = Date.now();
+    const p = runComparison(req('big', ['id']), { left: L.c, right: R.c, limits: DEFAULT_LIMITS });
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('runComparison hung')), 90_000));
+    await expect(Promise.race([p, timeout])).rejects.toBe(boom);
+    expect(Date.now() - started).toBeLessThan(90_000);
+    expect(L.stats.closes).toBe(L.stats.opens);
+    expect(R.stats.closes).toBe(R.stats.opens);
+  });
+
+  it('a failing bucket query on one side does not wait for the other side', async () => {
+    const boom = new Error('simulated query failure');
+    const R = counting(connector(DB_B));
+    const failing: SideConnector = {
+      ...R.c,
+      async open() {
+        const r = await R.c.open();
+        return { ...r, query: async (s: string, sig?: AbortSignal) => {
+          if (s.includes('COUNT_BIG(*)')) throw boom;
+          return r.query(s, sig);
+        } } as QueryRunner;
+      },
+    };
+    const L = counting(connector(DB_A));
+    const started = Date.now();
+    await expect(runComparison(req('big', ['id']), { left: L.c, right: failing, limits: DEFAULT_LIMITS })).rejects.toBe(boom);
+    // the left level-1 query on big takes ~15s; it must be cancelled, not awaited
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(L.stats.closes).toBe(L.stats.opens);
+    expect(R.stats.closes).toBe(R.stats.opens);
+  });
+});
 
 describe('runComparison: big', () => {
   it(`changed ${BIG_CHANGED} (${BIG_ROWS} rows/side) with defaults in under 5 minutes`, async () => {
