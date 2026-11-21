@@ -88,13 +88,21 @@ export function renderKeyProblems(root: HTMLElement, k: KeyProblems): void {
   if (k.duplicateKeys.length === 0 && k.nullKeys.length === 0 && k.leftDupRows + k.rightDupRows + k.leftNullKeyRows + k.rightNullKeyRows === 0) {
     root.appendChild(el('p', 'hint', 'No key problems found.'));
   }
-  const keyText = (key: (string | null)[]) => key.map((v) => (v === null ? 'NULL' : v)).join(', ');
+  const keyCell = (key: (string | null)[]): HTMLElement => {
+    const td = el('td');
+    key.forEach((v, i) => {
+      if (i > 0) td.appendChild(document.createTextNode(', '));
+      if (v === null) td.appendChild(el('span', 'null', 'NULL'));
+      else td.appendChild(document.createTextNode(v));
+    });
+    return td;
+  };
   if (k.duplicateKeys.length > 0) {
     root.appendChild(el('h2', undefined, 'Duplicate key samples'));
     const { table: t, body } = table(['Side', 'Key', 'Count']);
     for (const d of k.duplicateKeys) {
       const tr = el('tr');
-      tr.append(el('td', undefined, d.side), el('td', undefined, keyText(d.key)), el('td', undefined, fmt(d.count)));
+      tr.append(el('td', undefined, d.side), keyCell(d.key), el('td', undefined, fmt(d.count)));
       body.appendChild(tr);
     }
     root.appendChild(t);
@@ -104,7 +112,7 @@ export function renderKeyProblems(root: HTMLElement, k: KeyProblems): void {
     const { table: t, body } = table(['Side', 'Key']);
     for (const d of k.nullKeys) {
       const tr = el('tr');
-      tr.append(el('td', undefined, d.side), el('td', undefined, keyText(d.key)));
+      tr.append(el('td', undefined, d.side), keyCell(d.key));
       body.appendChild(tr);
     }
     root.appendChild(t);

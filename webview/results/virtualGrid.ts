@@ -74,13 +74,13 @@ export class VirtualGrid {
     private readonly fetchPage: (offset: number, limit: number) => void,
     private readonly metrics: GridMetrics = {},
   ) {
-    this.template = `grid-template-columns: 2.5em repeat(${columns.length}, minmax(120px, 1fr))`;
+    this.template = `2.5em repeat(${columns.length}, minmax(120px, 1fr))`;
     root.textContent = '';
     this.scroller = document.createElement('div');
     this.scroller.className = 'grid-scroller';
     const header = document.createElement('div');
     header.className = 'grid-header';
-    header.setAttribute('style', this.template);
+    header.style.gridTemplateColumns = this.template;
     for (const name of ['', ...columns]) {
       const h = document.createElement('div');
       h.className = 'cell';
@@ -153,7 +153,9 @@ export class VirtualGrid {
         el = document.createElement('div');
         el.className = 'grid-row placeholder';
       }
-      el.setAttribute('style', `${this.template}; top: ${i * this.rowHeight}px; height: ${this.rowHeight}px`);
+      el.style.gridTemplateColumns = this.template;
+      el.style.top = `${i * this.rowHeight}px`;
+      el.style.height = `${this.rowHeight}px`;
       frag.appendChild(el);
     }
     this.body.replaceChildren(frag);

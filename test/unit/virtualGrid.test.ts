@@ -67,4 +67,15 @@ describe('VirtualGrid', () => {
     grid.reset(500);
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
+  it('never sets a style attribute (CSP blocks inline style attributes)', () => {
+    const spy = vi.spyOn(Element.prototype, 'setAttribute');
+    const { root, grid } = setup(0);
+    grid.setTotal(100);
+    grid.setRows(0, rowsFrom(0, 100));
+    expect(spy.mock.calls.some(([n]) => String(n).toLowerCase() === 'style')).toBe(false);
+    const row = root.querySelector('.grid-row') as HTMLElement;
+    expect(row.style.height).toBe('24px');
+    expect(row.style.gridTemplateColumns).not.toBe('');
+    spy.mockRestore();
+  });
 });

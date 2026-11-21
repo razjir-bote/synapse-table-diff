@@ -16,7 +16,7 @@ export class ResultsPanel {
   }
 
   private readonly panel: vscode.WebviewPanel;
-  private readonly rows: CompareResult['rows'];
+  private rows: CompareResult['rows'];
   private readonly summary: Omit<CompareResult, 'rows'>;
 
   private constructor(ctx: vscode.ExtensionContext, result: CompareResult, private readonly actions: ResultsActions) {
@@ -33,7 +33,11 @@ export class ResultsPanel {
       { enableScripts: true, localResourceRoots: [root], retainContextWhenHidden: true },
     );
     this.panel.webview.html = this.html(root);
-    this.panel.webview.onDidReceiveMessage((m: ResultsToHost) => this.handle(m), null, ctx.subscriptions);
+    const sub = this.panel.webview.onDidReceiveMessage((m: ResultsToHost) => this.handle(m));
+    this.panel.onDidDispose(() => {
+      sub.dispose();
+      this.rows = [];
+    });
   }
 
   private html(root: vscode.Uri): string {
@@ -61,14 +65,26 @@ export class ResultsPanel {
         this.post({ type: 'summary', summary: this.summary, totalByKind: totalsByKind(this.rows) });
         break;
       case 'page':
-        this.post({ type: 'rows', kind: m.kind, offset: m.offset, rows: pageRows(this.rows, m.kind, m.offset, m.limit) });
+        this.post({ type: 'rows', kind: m.kind, offset: Math.max(0, Math.floor(Number(m.offset)) || 0), rows: pageRows(this.rows, m.kind, m.offset, m.limit) });
         break;
       case 'openDiff':
-        this.actions.openDiff();
+        this.run(() => this.actions.openDiff());
         break;
       case 'exportCsv':
-        this.actions.exportCsv();
+        this.run(() => this.actions.exportCsv());
         break;
     }
+  }
+
+  private run(fn: () => unknown): void {
+    try {
+      Promise.resolve(fn()).catch((e) => this.fail(e));
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  private fail(e: unknown): void {
+    void vscode.window.showErrorMessage(`Table Diff: ${e instanceof Error ? e.message : String(e)}`);
   }
 }

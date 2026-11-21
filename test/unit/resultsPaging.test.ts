@@ -15,3 +15,12 @@ describe('resultsPaging', () => {
     expect(pageRows(rows, 'all', 2, 200).map((x) => x.key[0])).toEqual(['3', '4']);
   });
 });
+
+describe('resultsPaging clamping', () => {
+  it('clamps limit to 1..200 and offset to >= 0', () => {
+    const many = Array.from({ length: 500 }, (_, i) => r('added', String(i)));
+    expect(pageRows(many, 'all', 0, 100000).length).toBe(200);
+    expect(pageRows(many, 'all', 0, 0).length).toBe(1);
+    expect(pageRows(many, 'all', -5, 2).map((x) => x.key[0])).toEqual(['0', '1']);
+  });
+});
