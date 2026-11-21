@@ -89,3 +89,21 @@ export interface DiffRow {
   right?: (string | null)[];
   changedColumns: string[];
 }
+
+export type Stage = 'schema' | 'checksums' | 'rebucket' | 'compare' | 'details';
+export interface CompareResult {
+  request: CompareRequest;
+  schema: SchemaDiff;
+  plan: ComparePlan;
+  leftRows: number;
+  rightRows: number;
+  added: number;
+  removed: number;
+  changed: number;
+  rows: DiffRow[]; // sorted by key, numeric-aware
+  detailCapped: boolean;
+  keyProblems: KeyProblems;
+  warnings: string[];
+  durationMs: number;
+  poolTypes: { left: PoolType; right: PoolType };
+}
