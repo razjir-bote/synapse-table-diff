@@ -46,6 +46,58 @@ describe('mergePairs', () => {
     const z = await mergePairs(gen([]), gen([]), 10);
     expect([z.added, z.removed, z.changed, z.selected.length]).toEqual([0, 0, 0, 0]);
   });
+  it('right-side dup excludes the kh; left run 1 vs right run 2', async () => {
+    const r = await mergePairs(gen([p(1, 1), p(2, 1)]), gen([p(1, 1), p(1, 2), p(3, 1)]), 100);
+    expect([r.added, r.removed, r.changed]).toEqual([1, 1, 0]);
+    expect(r.duplicateSamples).toEqual([{ side: 'right', key: ['1'], count: 2 }]);
+    expect(r.selected.map((s) => s.khHex)).toEqual(['000002', '000003']);
+  });
+  it('dup run with no counterpart is sampled and not counted', async () => {
+    const r = await mergePairs(gen([p(1, 1), p(1, 2), p(1, 3), p(1, 4)]), gen([]), 100);
+    expect([r.added, r.removed, r.changed]).toEqual([0, 0, 0]);
+    expect(r.duplicateSamples).toEqual([{ side: 'left', key: ['1'], count: 4 }]);
+    const r2 = await mergePairs(gen([]), gen([p(5, 1), p(5, 1)]), 100);
+    expect([r2.added, r2.removed]).toEqual([0, 0]);
+    expect(r2.duplicateSamples).toEqual([{ side: 'right', key: ['5'], count: 2 }]);
+  });
+  it('knull row mixed into a run with a real row of the same kh is not a duplicate', async () => {
+    const nk = p(1, 7, { knull: 1, b2: -1, keys: [null] });
+    const r = await mergePairs(gen([nk, p(1, 1)]), gen([p(1, 2)]), 100);
+    expect(r.changed).toBe(1);
+    expect(r.duplicateSamples).toEqual([]);
+    expect(r.nullKeySamples).toEqual([{ side: 'left', key: [null] }]);
+  });
+  it('caps samples at 100 per side for dups and null keys', async () => {
+    const L: PairRow[] = [];
+    const R: PairRow[] = [];
+    for (let i = 1; i <= 120; i++) {
+      L.push(p(i, 1), p(i, 2));
+      R.push(p(i, 1), p(i, 2));
+    }
+    const nk = (n: number) => Array.from({ length: n }, () => p(0, 1, { knull: 1, b2: -1, keys: [null] }));
+    const r = await mergePairs(gen([...nk(150), ...L]), gen([...nk(110), ...R]), 100);
+    expect(r.duplicateSamples.filter((s) => s.side === 'left')).toHaveLength(100);
+    expect(r.duplicateSamples.filter((s) => s.side === 'right')).toHaveLength(100);
+    expect(r.nullKeySamples.filter((s) => s.side === 'left')).toHaveLength(100);
+    expect(r.nullKeySamples.filter((s) => s.side === 'right')).toHaveLength(100);
+  });
+  it('records b2 on selected entries', async () => {
+    const r = await mergePairs(gen([p(1, 1, { b2: 11 })]), gen([p(1, 2, { b2: 11 }), p(2, 1, { b2: 22 })]), 100);
+    expect(r.selected).toEqual([
+      { kind: 'changed', khHex: '000001', b2: 11 },
+      { kind: 'added', khHex: '000002', b2: 22 },
+    ]);
+  });
+  it('aborts mid-stream via the 10,000-row check', async () => {
+    const ac = new AbortController();
+    async function* big(): AsyncGenerator<PairRow> {
+      for (let i = 0; i < 30_000; i++) {
+        if (i === 100) ac.abort();
+        yield { kh: Buffer.from([0, (i >> 8) & 255, i & 255]), rh: Buffer.from([1]), knull: 0, b2: 0, keys: [i] };
+      }
+    }
+    await expect(mergePairs(big(), gen([]), 10, ac.signal)).rejects.toBeInstanceOf(CompareCancelledError);
+  });
   it('throws CompareCancelledError when aborted', async () => {
     const ac = new AbortController();
     ac.abort();
