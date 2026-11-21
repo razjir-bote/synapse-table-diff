@@ -31,7 +31,15 @@ export interface ColumnNorm {
   rtrim: boolean;
   upper: boolean;
 }
-export interface ColumnPairPlan { name: string; leftName: string; rightName: string; norm: ColumnNorm }
+export interface ColumnPairPlan {
+  name: string;
+  leftName: string;
+  rightName: string;
+  norm: ColumnNorm;
+  /** Each side's own column, used for display values (absent in some hand-built test plans). */
+  leftCol?: ColumnInfo;
+  rightCol?: ColumnInfo;
+}
 export interface Limits { pairLimit: number; detailLimit: number; inListCap: number; queryTimeoutSeconds: number }
 export const DEFAULT_LIMITS: Limits = {
   pairLimit: 2_000_000,

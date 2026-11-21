@@ -108,7 +108,7 @@ function renderSide(side: Side, s: SideState, state: SetupState, a: SetupActions
   tbl.appendChild(option('', '(choose table or view)', !s.table));
   s.objects.forEach((o, i) => {
     const sel = !!s.table && s.table.schema === o.schema && s.table.name === o.name;
-    tbl.appendChild(option(String(i), `${o.schema}.${o.name}${o.kind === 'view' ? ' (view)' : ''}`, sel));
+    tbl.appendChild(option(String(i), `${o.schema}.${o.name}${o.kind === 'table' ? '' : ` (${o.kind})`}`, sel));
   });
   tbl.addEventListener('change', () => {
     const o = tbl.value === '' ? undefined : s.objects[Number(tbl.value)];

@@ -164,3 +164,17 @@ describe('error persistence', () => {
     expect(root.querySelector('b')).toBeNull();
   });
 });
+
+describe('table list labels', () => {
+  it('labels views and external tables, not plain tables', () => {
+    const root = document.createElement('div');
+    const objects = [
+      { schema: 'dbo', name: 't', kind: 'table' },
+      { schema: 'dbo', name: 'v', kind: 'view' },
+      { schema: 'ext', name: 'e', kind: 'external table' },
+    ];
+    renderSetup(root, state({ sides: { left: side(['Id'], [], { objects }), right: side(['id']) } }));
+    const labels = Array.from(root.querySelectorAll('[data-role="left-table"] option')).map((o) => o.textContent);
+    expect(labels).toEqual(['(choose table or view)', 'dbo.t', 'dbo.v (view)', 'ext.e (external table)']);
+  });
+});

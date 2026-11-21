@@ -102,7 +102,14 @@ export function normalizeExpr(colSql: string, norm: ColumnNorm): string {
     case 'datetime': {
       const p = norm.dtPrecision;
       if (p === 'day') return `CONVERT(nvarchar(10), CAST(${c} AS date), 23)`;
-      if (p === 'minute') return `LEFT(CONVERT(nvarchar(30), CAST(${c} AS datetime2(0)), 126), 16)`;
+      if (p === 'minute') {
+        // Round to the nearest minute (seconds >= 30 round up), as SQL Server does when it stores a value in
+        // smalldatetime: add 30 seconds, then truncate. Values within 30 s of the datetime2 maximum cannot be
+        // shifted, so they are truncated instead (no smalldatetime can equal them anyway).
+        const v = `CAST(${c} AS datetime2(7))`;
+        return `CASE WHEN ${v} >= '9999-12-31T23:59:30' THEN N'9999-12-31T23:59' `
+          + `ELSE LEFT(CONVERT(nvarchar(30), DATEADD(second, 30, ${v}), 126), 16) END`;
+      }
       return `CONVERT(nvarchar(30), CAST(${c} AS datetime2(${p ?? 7})), 126)`;
     }
     case 'time':

@@ -1,4 +1,4 @@
-import type { ColumnPairPlan, ComparePlan, Side, TableRef } from '../core/types';
+import type { ColumnInfo, ColumnPairPlan, ComparePlan, Side, TableRef } from '../core/types';
 import { normalizeExpr } from './normalize';
 import { qualifiedName, quoteIdent, sqlString } from './sqlText';
 
@@ -17,9 +17,19 @@ export function listObjectsQuery(): string {
     'SELECT s.name AS schema_name, o.name AS object_name, o.type AS object_type',
     'FROM sys.objects AS o',
     'INNER JOIN sys.schemas AS s ON o.schema_id = s.schema_id',
-    "WHERE o.type IN ('U', 'V')",
+    "WHERE o.type IN ('U', 'V', 'ET')",
     'ORDER BY s.name, o.name',
   ].join('\n');
+}
+
+export type ObjectKind = 'table' | 'view' | 'external table';
+
+/** Maps a sys.objects type code from listObjectsQuery to the kind shown in the table list. */
+export function objectKindOf(objectType: unknown): ObjectKind {
+  const t = String(objectType).trim().toUpperCase();
+  if (t === 'V') return 'view';
+  if (t === 'ET') return 'external table';
+  return 'table';
 }
 
 export function columnsQuery(t: { schema: string; name: string }): string {
@@ -53,9 +63,34 @@ function rawCol(c: ColumnPairPlan, side: Side): string {
   return quoteIdent(side === 'left' ? c.leftName : c.rightName);
 }
 
+const MAX_START = "CAST(N'' AS nvarchar(max))";
+
+/** Families whose normalized expression is nvarchar(max). */
+const isMaxFamily = (c: ColumnPairPlan) => c.norm.family === 'character' || c.norm.family === 'binary';
+
+/**
+ * Upper bound of a non-max segment's declared length in characters: every non-max normalized expression is at
+ * most nvarchar(50), plus `#`, the nvarchar(20) length and `:`.
+ */
+const NON_MAX_SEGMENT_CHARS = 72;
+
+/**
+ * `a + b + c` is evaluated left to right, and a sum of non-max nvarchar values is typed nvarchar(n) with n capped
+ * at 4000, so longer data is silently truncated (dropping later columns from the hash). Once an nvarchar(max)
+ * value enters the chain, every later sum is nvarchar(max). So when the non-max segments before the first max
+ * segment could exceed 4000 characters, the chain starts from an nvarchar(max) empty string.
+ * It is not added otherwise: an nvarchar(max) key hash doubles the pass-2 time (LOB hashing per row).
+ */
+export function needsMaxStart(cols: ColumnPairPlan[]): boolean {
+  const firstMax = cols.findIndex(isMaxFamily);
+  const leading = firstMax === -1 ? cols.length : firstMax;
+  return leading * NON_MAX_SEGMENT_CHARS > 4000;
+}
+
 function hashOf(cols: ColumnPairPlan[], side: Side): string {
   if (cols.length === 0) return "HASHBYTES('SHA2_256', N'')";
   const segs = cols.map((c) => segment(normalizeExpr(rawCol(c, side), c.norm)));
+  if (needsMaxStart(cols)) segs.unshift(MAX_START);
   return `HASHBYTES('SHA2_256', ${segs.join(' + ')})`;
 }
 
@@ -125,6 +160,38 @@ export function pairQuery(
   return `SELECT kh, rh, knull, ${bucketExpr(2)} AS b2, ${ks}\n${from}${where}\nORDER BY kh`;
 }
 
+/**
+ * Display value of a detail column, computed server-side as an exact string where the driver would lose
+ * information (decimal -> double, datetime2/time -> Date in ms, datetimeoffset -> UTC). Other types are
+ * returned raw and formatted by `formatValue`.
+ */
+export function displayExpr(colSql: string, col: ColumnInfo | undefined): string {
+  switch (col?.type) {
+    case 'decimal':
+    case 'numeric':
+      return `CONVERT(nvarchar(60), ${colSql})`;
+    case 'money':
+    case 'smallmoney':
+      return `CONVERT(nvarchar(60), ${colSql}, 2)`;
+    case 'date':
+      return `CONVERT(nvarchar(10), ${colSql}, 23)`;
+    case 'smalldatetime':
+      return `CONVERT(nvarchar(19), ${colSql}, 120)`;
+    case 'datetime':
+    case 'datetime2':
+      return `CONVERT(nvarchar(27), ${colSql}, 121)`;
+    case 'datetimeoffset':
+      return `CONVERT(nvarchar(34), ${colSql}, 121)`;
+    case 'time':
+      return `CONVERT(nvarchar(16), ${colSql})`;
+    default:
+      return colSql;
+  }
+}
+
+const sideCol = (c: ColumnPairPlan, side: Side) => (side === 'left' ? c.leftCol : c.rightCol);
+
+/** Detail rows of the given level-2 buckets, unordered (the caller looks rows up by kh). */
 export function detailQuery(
   plan: ComparePlan,
   side: Side,
@@ -132,9 +199,10 @@ export function detailQuery(
   filter: string | undefined,
   within: BucketFilter,
 ): string {
+  if (within.level !== 2 || within.ids.length === 0) throw new Error('detailQuery needs a level-2 bucket filter');
   const extra = [
-    ...plan.keys.map((k, i) => `${rawCol(k, side)} AS k_${i}`),
-    ...plan.compared.map((c, i) => `${rawCol(c, side)} AS v_${i}`),
+    ...plan.keys.map((k, i) => `${displayExpr(rawCol(k, side), sideCol(k, side))} AS k_${i}`),
+    ...plan.compared.map((c, i) => `${displayExpr(rawCol(c, side), sideCol(c, side))} AS v_${i}`),
     ...plan.compared.map((c, i) => `${normalizeExpr(rawCol(c, side), c.norm)} AS n_${i}`),
   ];
   const { from, where } = hashedTable(plan, side, t, filter, extra, within);
@@ -144,5 +212,5 @@ export function detailQuery(
     ...plan.compared.map((_, i) => `v_${i}`),
     ...plan.compared.map((_, i) => `n_${i}`),
   ].join(', ');
-  return `SELECT ${cols}\n${from}${where}\nORDER BY kh`;
+  return `SELECT ${cols}\n${from}${where}`;
 }

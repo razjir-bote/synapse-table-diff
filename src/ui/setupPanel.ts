@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import type { ColumnInfo, CompareRequest, Side, TableRef } from '../core/types';
 import type { ProfileStore } from '../profiles/profileStore';
 import type { QueryRunner, SideConnector } from '../db/runner';
-import { columnsQuery, declaredKeyQuery, listDatabasesQuery, listObjectsQuery } from '../sql/queries';
+import { columnsQuery, declaredKeyQuery, listDatabasesQuery, listObjectsQuery, objectKindOf } from '../sql/queries';
 import type { HostToSetup, SetupToHost } from './protocol';
 
 export interface SetupDeps {
@@ -128,7 +128,7 @@ export class SetupPanel {
             objects: rows.map((r) => ({
               schema: r.schema_name,
               name: r.object_name,
-              kind: String(r.object_type).trim() === 'V' ? ('view' as const) : ('table' as const),
+              kind: objectKindOf(r.object_type),
             })),
           });
           break;

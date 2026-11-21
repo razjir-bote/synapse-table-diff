@@ -1,4 +1,5 @@
 import type { ChangeKind, ColumnInfo, CompareRequest, CompareResult, DiffRow, PoolType, Side, TableRef } from '../core/types';
+import type { ObjectKind } from '../sql/queries';
 
 export type SetupToHost =
   | { type: 'ready' }
@@ -10,7 +11,7 @@ export type SetupToHost =
 export type HostToSetup =
   | { type: 'init'; profiles: { id: string; name: string }[]; initial?: CompareRequest }
   | { type: 'databases'; side: Side; profileId: string; names: string[] }
-  | { type: 'objects'; side: Side; profileId: string; database: string; objects: { schema: string; name: string; kind: 'table' | 'view' }[] }
+  | { type: 'objects'; side: Side; profileId: string; database: string; objects: { schema: string; name: string; kind: ObjectKind }[] }
   | { type: 'described'; side: Side; ref: TableRef; columns: ColumnInfo[]; declaredKey: string[]; poolType: PoolType }
   | { type: 'error'; message: string; side?: Side };
 

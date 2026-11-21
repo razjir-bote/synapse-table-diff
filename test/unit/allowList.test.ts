@@ -24,6 +24,12 @@ describe('assertAllowedSql accepts known-safe SQL', () => {
     ).not.toThrow();
   });
 
+  it('accepts DATEADD with the second date part (minute-precision rounding)', () => {
+    expect(() => assertAllowedSql('SELECT DATEADD(second, 30, CAST(x AS datetime2(7))) AS b FROM [s].[t]')).not.toThrow();
+    expect(() => assertAllowedSql('SELECT DATEADD(minute, 1, x) AS b FROM [s].[t]')).toThrow(/minute/);
+    expect(() => assertAllowedSql('SELECT DATEDIFF(second, x, y) AS b FROM [s].[t]')).toThrow(/DATEDIFF/);
+  });
+
   it('accepts CAST with type names and max', () => {
     expect(() => assertAllowedSql('SELECT CAST(x AS nvarchar(max)) AS b24 FROM [s].[t]')).not.toThrow();
   });

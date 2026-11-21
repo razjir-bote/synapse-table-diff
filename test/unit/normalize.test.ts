@@ -54,8 +54,10 @@ describe('normalizeExpr', () => {
   it('datetime day / minute / n', () => {
     expect(normalizeExpr('[c]', { ...base, family: 'datetime', dtPrecision: 'day' })).toBe(
       'CONVERT(nvarchar(10), CAST([c] AS date), 23)');
+    // rounds to the nearest minute like smalldatetime: +30 s, then truncate; the top 30 s cannot be shifted
     expect(normalizeExpr('[c]', { ...base, family: 'datetime', dtPrecision: 'minute' })).toBe(
-      'LEFT(CONVERT(nvarchar(30), CAST([c] AS datetime2(0)), 126), 16)');
+      "CASE WHEN CAST([c] AS datetime2(7)) >= '9999-12-31T23:59:30' THEN N'9999-12-31T23:59' "
+      + 'ELSE LEFT(CONVERT(nvarchar(30), DATEADD(second, 30, CAST([c] AS datetime2(7))), 126), 16) END');
     expect(normalizeExpr('[c]', { ...base, family: 'datetime', dtPrecision: 3 })).toBe(
       'CONVERT(nvarchar(30), CAST([c] AS datetime2(3)), 126)');
   });

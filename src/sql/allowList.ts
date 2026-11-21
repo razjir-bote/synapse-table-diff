@@ -3,7 +3,7 @@
 
 const FUNCTION_NAMES = [
   'HASHBYTES', 'CAST', 'CONVERT', 'SUBSTRING', 'COUNT_BIG', 'SUM', 'DATALENGTH',
-  'RTRIM', 'UPPER', 'LEFT', 'SWITCHOFFSET', 'OBJECT_ID', 'SERVERPROPERTY', 'IN',
+  'RTRIM', 'UPPER', 'LEFT', 'SWITCHOFFSET', 'DATEADD', 'OBJECT_ID', 'SERVERPROPERTY', 'IN',
   'nvarchar', 'varchar', 'decimal', 'datetime2', 'time', 'float', 'bigint', 'int', 'date',
 ];
 
@@ -16,6 +16,9 @@ const KEYWORD_NAMES = [
 const TYPE_NAMES = [
   'nvarchar', 'varchar', 'decimal', 'datetime2', 'time', 'float', 'bigint', 'int', 'date',
 ];
+
+// Date parts used as bare words (DATEADD(second, ...) in the minute-precision normalization).
+const DATEPART_NAMES = ['second'];
 
 const SYS_CATALOG_NAMES = [
   'columns', 'types', 'objects', 'schemas', 'indexes', 'index_columns', 'databases',
@@ -31,6 +34,7 @@ export const ALLOWED_KEYWORDS: ReadonlySet<string> = new Set(
 
 const TYPE_SET: ReadonlySet<string> = new Set(TYPE_NAMES.map((n) => n.toUpperCase()));
 const SYS_CATALOG_SET: ReadonlySet<string> = new Set(SYS_CATALOG_NAMES);
+const DATEPART_SET: ReadonlySet<string> = new Set(DATEPART_NAMES.map((n) => n.toUpperCase()));
 
 const ALIAS_RE =
   /^(kh|rh|knull|b24|b1|b2|b|f|cnt|dk|s1|s2|k_\d+|v_\d+|n_\d+|h|x|name|type_name|max_length|precision|scale|is_nullable|column_id|schema_name|object_name|object_type|is_primary_key|is_unique_constraint|engine_edition|key_ordinal|c|t|s|o|i|ic|object_id|user_type_id|schema_id|type|index_id|is_unique)$/;
@@ -139,7 +143,9 @@ function isName(t: Tok | undefined): boolean {
 
 function checkBareWord(text: string): void {
   const upper = text.toUpperCase();
-  if (ALLOWED_KEYWORDS.has(upper) || TYPE_SET.has(upper) || upper === 'MAX' || ALIAS_RE.test(text)) {
+  if (
+    ALLOWED_KEYWORDS.has(upper) || TYPE_SET.has(upper) || DATEPART_SET.has(upper) || upper === 'MAX' || ALIAS_RE.test(text)
+  ) {
     return;
   }
   fail(text);

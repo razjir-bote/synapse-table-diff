@@ -16,6 +16,7 @@
   - Each column contributes a *segment*: `CASE WHEN v IS NULL THEN N'~' ELSE N'#' + CAST(DATALENGTH(v)/2 AS nvarchar(20)) + N':' + v END`, where `v` is the column's normalized `nvarchar` expression from `normalizeExpr`.
   - `kh = HASHBYTES('SHA2_256', <key segments in keyColumns order>)`.
   - `rh = HASHBYTES('SHA2_256', <segments of compared non-key columns sorted by lower-cased name>)`. With zero such columns, `rh = HASHBYTES('SHA2_256', N'')`.
+  - When the non-max segments before the first nvarchar(max) segment could exceed 4,000 characters (more than 55 of them, at 72 characters each), the chain starts from `CAST(N'' AS nvarchar(max))` (`HASHBYTES('SHA2_256', CAST(N'' AS nvarchar(max)) + seg1 + …)`), so the concatenation is never truncated.
 - **Buckets.**
   - `b24 = CAST(SUBSTRING(kh,1,3) AS int)`.
   - Level 1: `b1 = CASE WHEN knull=1 THEN -1 ELSE b24/4096 END` (4096 buckets).

@@ -59,7 +59,7 @@ export function diffSchema(
   const toPlan = (l: ColumnInfo, r: ColumnInfo) => {
     const p = planColumnPair(l, r, opts);
     return p.ok
-      ? { ok: true as const, plan: { name: l.name, leftName: l.name, rightName: r.name, norm: p.norm } as ColumnPairPlan }
+      ? { ok: true as const, plan: { name: l.name, leftName: l.name, rightName: r.name, norm: p.norm, leftCol: l, rightCol: r } as ColumnPairPlan }
       : { ok: false as const, reason: p.reason };
   };
 
