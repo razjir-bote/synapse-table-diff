@@ -42,6 +42,20 @@ describe('runFromRequest', () => {
     expect(env.showResults).toHaveBeenCalledWith(result);
   });
 
+  it('shows results before saving the recent entry, and a save failure is ignored', async () => {
+    const order: string[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { env } = makeEnv(async () => result, {
+      showResults: vi.fn(() => { order.push('show'); }),
+      addRecent: vi.fn(async () => { order.push('recent'); throw new Error('storage full'); }),
+    });
+    await runFromRequest(req, env);
+    expect(order).toEqual(['show', 'recent']);
+    expect(env.showErrorMessage).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it('cancel aborts pipeline, informs, no panel', async () => {
     let signal: AbortSignal | undefined;
     const t = makeEnv((_r, deps) => {
@@ -117,12 +131,20 @@ describe('runFromRequest', () => {
   });
 });
 
+describe('readLimits bounds', () => {
+  it('clamps out-of-range settings to the declared bounds', () => {
+    const vals: Record<string, unknown> = { pairLimit: 5, detailLimit: 5_000_000, inListCap: 0, queryTimeoutSeconds: 'x' };
+    const cfg = { get: <T,>(k: string, def: T) => (vals[k] ?? def) as T };
+    expect(readLimits(cfg)).toEqual({ pairLimit: 1000, detailLimit: 1_000_000, inListCap: 1, queryTimeoutSeconds: 3600 });
+  });
+});
+
 describe('helpers', () => {
   it('recentLabel format', () => {
     expect(recentLabel(req)).toBe('dbo.orders ↔ dbo.orders2');
   });
   it('readLimits falls back to defaults', () => {
     expect(readLimits({ get: (_k: string, d: any) => d })).toEqual(DEFAULT_LIMITS);
-    expect(readLimits({ get: (k: string, d: any) => (k === 'pairLimit' ? 7 : d) }).pairLimit).toBe(7);
+    expect(readLimits({ get: (k: string, d: any) => (k === 'pairLimit' ? 7000 : d) }).pairLimit).toBe(7000);
   });
 });

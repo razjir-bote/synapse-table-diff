@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import type * as vscode from 'vscode';
 import type { CompareResult, DiffRow, Side } from '../core/types';
 
 const NULL_TEXT = 'NULL';
 
+/** One value as text; CR and LF are escaped so a row stays on one line in the diff editor. */
 function cell(v: string | null | undefined): string {
-  return v === null || v === undefined ? NULL_TEXT : v;
+  return v === null || v === undefined ? NULL_TEXT : v.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 }
 
 /**
@@ -44,8 +46,25 @@ export function diffTitle(result: CompareResult): string {
 export class DiffDocumentProvider implements vscode.TextDocumentContentProvider {
   private readonly runs = new Map<string, CompareResult>();
 
+  constructor(private readonly newId: () => string = randomUUID) {}
+
   set(runId: string, result: CompareResult): void {
     this.runs.set(runId, result);
+  }
+
+  /** Registers a result under a new run id (one per result); `delete` it when the result's panel closes. */
+  add(result: CompareResult): string {
+    const runId = this.newId();
+    this.runs.set(runId, result);
+    return runId;
+  }
+
+  delete(runId: string): void {
+    this.runs.delete(runId);
+  }
+
+  get size(): number {
+    return this.runs.size;
   }
 
   provideTextDocumentContent(uri: vscode.Uri): string {

@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import { ProfileStore } from './profiles/profileStore';
 import { RecentStore } from './profiles/recentStore';
@@ -22,9 +21,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerConnectionCommands(ctx, store);
   ctx.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('tablediff', provider));
 
-  const openDiff = async (result: CompareResult) => {
-    const runId = randomUUID();
-    provider.set(runId, result);
+  const openDiff = async (runId: string, result: CompareResult) => {
     await vscode.commands.executeCommand(
       'vscode.diff',
       vscode.Uri.parse(`tablediff:/${runId}/left.txt`),
@@ -63,9 +60,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     runComparison,
     addRecent: (r) => recent.add(r),
     showResults: (result) => {
+      // One diff-document run per result, released when its results panel closes.
+      const runId = provider.add(result);
       ResultsPanel.show(ctx, result, {
-        openDiff: () => void openDiff(result),
+        openDiff: () => void openDiff(runId, result),
         exportCsv: () => void exportCsv(result),
+        onDispose: () => provider.delete(runId),
       });
     },
   };

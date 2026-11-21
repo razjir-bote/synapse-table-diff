@@ -23,21 +23,27 @@
         "tableDiff.pairLimit": {
           "type": "number",
           "default": 2000000,
+          "minimum": 1000,
           "description": "Maximum number of row pairs compared."
         },
         "tableDiff.detailLimit": {
           "type": "number",
           "default": 100000,
+          "minimum": 1,
+          "maximum": 1000000,
           "description": "Maximum number of detail rows returned."
         },
         "tableDiff.inListCap": {
           "type": "number",
           "default": 5000,
-          "description": "Maximum number of keys in an IN list."
+          "minimum": 1,
+          "maximum": 20000,
+          "description": "Maximum number of bucket ids per narrowing or detail filter."
         },
         "tableDiff.queryTimeoutSeconds": {
           "type": "number",
           "default": 3600,
+          "minimum": 30,
           "description": "Query timeout in seconds."
         }
       }

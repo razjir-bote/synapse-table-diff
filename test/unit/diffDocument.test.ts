@@ -97,6 +97,15 @@ describe('renderSideText', () => {
   });
 });
 
+describe('value escaping', () => {
+  it('escapes CR and LF so each row stays on one line', () => {
+    const r = makeResult([{ kind: 'removed', key: ['1'], left: ['a\r\nb', 'c\nd'], changedColumns: [] }]);
+    const lines = renderSideText(r, 'left').split('\n');
+    expect(lines).toHaveLength(3); // header, one row, trailing empty
+    expect(lines[1]).toContain('name=a\\r\\nb | qty=c\\nd');
+  });
+});
+
 describe('diffTitle', () => {
   it('names both tables with the arrow separator', () => {
     expect(diffTitle(makeResult(rows))).toBe('Table Diff: dbo.orders ↔ dbo.orders_new');
@@ -110,6 +119,19 @@ describe('DiffDocumentProvider', () => {
     provider.set('run1', result);
     expect(provider.provideTextDocumentContent(uriOf('/run1/left.txt'))).toBe(renderSideText(result, 'left'));
     expect(provider.provideTextDocumentContent(uriOf('/run1/right.txt'))).toBe(renderSideText(result, 'right'));
+  });
+
+  it('add() registers a result under a fresh run id and delete() forgets it', () => {
+    const result = makeResult(rows);
+    const provider = new DiffDocumentProvider();
+    const a = provider.add(result);
+    const b = provider.add(result);
+    expect(a).not.toBe(b);
+    expect(provider.size).toBe(2);
+    expect(provider.provideTextDocumentContent(uriOf(`/${a}/left.txt`))).toBe(renderSideText(result, 'left'));
+    provider.delete(a);
+    expect(provider.size).toBe(1);
+    expect(provider.provideTextDocumentContent(uriOf(`/${a}/left.txt`))).toBe('');
   });
 
   it('returns empty string for an unknown runId', () => {

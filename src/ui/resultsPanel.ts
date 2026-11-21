@@ -7,6 +7,8 @@ import { pageRows, totalsByKind } from './resultsPaging';
 export interface ResultsActions {
   openDiff(): void;
   exportCsv(): void;
+  /** Called once when the panel closes, to release what belongs to this result. */
+  onDispose?(): void;
 }
 
 export class ResultsPanel {
@@ -37,6 +39,11 @@ export class ResultsPanel {
     this.panel.onDidDispose(() => {
       sub.dispose();
       this.rows = [];
+      try {
+        this.actions.onDispose?.();
+      } catch (e) {
+        this.fail(e);
+      }
     });
   }
 

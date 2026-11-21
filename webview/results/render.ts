@@ -1,4 +1,4 @@
-import type { CompareResult, ExcludedColumn, KeyProblems, SchemaDiff } from '../../src/core/types';
+import type { ColumnInfo, CompareResult, ExcludedColumn, KeyProblems, SchemaDiff } from '../../src/core/types';
 
 type Summary = Omit<CompareResult, 'rows'>;
 
@@ -37,9 +37,27 @@ export function renderSummary(root: HTMLElement, s: Summary): void {
 }
 
 const dash = '—';
-function colDesc(c: { type: string; nullable: boolean } | undefined): string {
+
+/** Type with its length, precision or scale, e.g. varchar(50), nvarchar(max), decimal(12,4), datetime2(7). */
+export function typeDesc(c: ColumnInfo): string {
+  const len = (bytesPerChar: number) => (c.maxLength === -1 ? 'max' : String(c.maxLength / bytesPerChar));
+  switch (c.type) {
+    case 'char': case 'varchar': case 'binary': case 'varbinary':
+      return `${c.type}(${len(1)})`;
+    case 'nchar': case 'nvarchar':
+      return `${c.type}(${len(2)})`;
+    case 'decimal': case 'numeric':
+      return `${c.type}(${c.precision},${c.scale})`;
+    case 'datetime2': case 'time': case 'datetimeoffset':
+      return `${c.type}(${c.scale})`;
+    default:
+      return c.type;
+  }
+}
+
+function colDesc(c: ColumnInfo | undefined): string {
   if (!c) return dash;
-  return `${c.type} ${c.nullable ? 'NULL' : 'NOT NULL'}`;
+  return `${typeDesc(c)} ${c.nullable ? 'NULL' : 'NOT NULL'}`;
 }
 
 function table(headers: string[]): { table: HTMLTableElement; body: HTMLTableSectionElement } {

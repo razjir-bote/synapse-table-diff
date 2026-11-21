@@ -38,12 +38,25 @@ export interface CompareEnv {
   showResults(result: CompareResult): void;
 }
 
+/** Bounds of each setting, as declared in package.json (VS Code does not enforce them on settings.json). */
+export const LIMIT_BOUNDS: Record<keyof Limits, { min: number; max: number }> = {
+  pairLimit: { min: 1000, max: Number.MAX_SAFE_INTEGER },
+  detailLimit: { min: 1, max: 1_000_000 },
+  inListCap: { min: 1, max: 20_000 },
+  queryTimeoutSeconds: { min: 30, max: Number.MAX_SAFE_INTEGER },
+};
+
 export function readLimits(cfg: { get<T>(key: string, def: T): T }): Limits {
+  const read = (k: keyof Limits): number => {
+    const v = Number(cfg.get(k, DEFAULT_LIMITS[k]));
+    if (!Number.isFinite(v)) return DEFAULT_LIMITS[k];
+    return Math.min(LIMIT_BOUNDS[k].max, Math.max(LIMIT_BOUNDS[k].min, Math.floor(v)));
+  };
   return {
-    pairLimit: cfg.get('pairLimit', DEFAULT_LIMITS.pairLimit),
-    detailLimit: cfg.get('detailLimit', DEFAULT_LIMITS.detailLimit),
-    inListCap: cfg.get('inListCap', DEFAULT_LIMITS.inListCap),
-    queryTimeoutSeconds: cfg.get('queryTimeoutSeconds', DEFAULT_LIMITS.queryTimeoutSeconds),
+    pairLimit: read('pairLimit'),
+    detailLimit: read('detailLimit'),
+    inListCap: read('inListCap'),
+    queryTimeoutSeconds: read('queryTimeoutSeconds'),
   };
 }
 
@@ -78,8 +91,13 @@ export async function runFromRequest(req: CompareRequest, env: CompareEnv): Prom
         });
       },
     );
-    await env.addRecent(req);
     env.showResults(result);
+    // Best effort: a storage failure must never hide a finished result.
+    try {
+      await env.addRecent(req);
+    } catch (err) {
+      console.warn('Table Diff: could not save the recent comparison', err);
+    }
   } catch (err) {
     if (err instanceof CompareCancelledError) {
       void env.showInformationMessage('Comparison cancelled.');

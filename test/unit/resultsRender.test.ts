@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { renderSummary, renderSchemaTab, renderKeyProblems, formatDuration } from '../../webview/results/render';
-import type { CompareResult, SchemaDiff, KeyProblems } from '../../src/core/types';
+import { renderSummary, renderSchemaTab, renderKeyProblems, formatDuration, typeDesc } from '../../webview/results/render';
+import type { ColumnInfo, CompareResult, SchemaDiff, KeyProblems } from '../../src/core/types';
 
 const ref = (name: string) => ({ profileId: 'p', database: 'db', schema: 'dbo', name });
 function summary(over: Partial<Omit<CompareResult, 'rows'>> = {}): Omit<CompareResult, 'rows'> {
@@ -66,6 +66,32 @@ describe('renderSchemaTab', () => {
     expect(root.textContent).toContain('bigint');
     expect(root.textContent).toContain('Blob');
     expect(root.textContent).toContain('unsupported type');
+  });
+});
+
+describe('typeDesc', () => {
+  const c = (type: string, o: Partial<ColumnInfo> = {}): ColumnInfo =>
+    ({ name: 'x', type, maxLength: 0, precision: 0, scale: 0, nullable: true, ordinal: 1, ...o });
+  it('includes length, precision and scale', () => {
+    expect(typeDesc(c('varchar', { maxLength: 50 }))).toBe('varchar(50)');
+    expect(typeDesc(c('nvarchar', { maxLength: 40 }))).toBe('nvarchar(20)');
+    expect(typeDesc(c('nvarchar', { maxLength: -1 }))).toBe('nvarchar(max)');
+    expect(typeDesc(c('varbinary', { maxLength: -1 }))).toBe('varbinary(max)');
+    expect(typeDesc(c('char', { maxLength: 5 }))).toBe('char(5)');
+    expect(typeDesc(c('decimal', { precision: 12, scale: 4 }))).toBe('decimal(12,4)');
+    expect(typeDesc(c('datetime2', { scale: 7 }))).toBe('datetime2(7)');
+    expect(typeDesc(c('time', { scale: 3 }))).toBe('time(3)');
+    expect(typeDesc(c('int', { maxLength: 4, precision: 10 }))).toBe('int');
+    expect(typeDesc(c('datetime', { maxLength: 8, precision: 23, scale: 3 }))).toBe('datetime');
+  });
+  it('is shown in the schema tab', () => {
+    const root = document.createElement('div');
+    renderSchemaTab(root, {
+      columns: [{ name: 'A', status: 'changed', left: c('varchar', { maxLength: 50 }), right: c('decimal', { precision: 12, scale: 4 }), changes: ['type'] }],
+      differenceCount: 1,
+    }, []);
+    expect(root.textContent).toContain('varchar(50) NULL');
+    expect(root.textContent).toContain('decimal(12,4) NULL');
   });
 });
 
