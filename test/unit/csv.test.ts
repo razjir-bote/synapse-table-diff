@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Writable } from 'node:stream';
 import type { CompareResult, DiffRow } from '../../src/core/types';
-import { writeCsv, exportMessage } from '../../src/export/csv';
+import { writeCsv, exportMessage, neutralizeFormula } from '../../src/export/csv';
 
 function makeResult(rows: DiffRow[], overrides: Partial<CompareResult> = {}): CompareResult {
   const count = (kind: DiffRow['kind']) => rows.filter((r) => r.kind === kind).length;
@@ -186,5 +186,30 @@ describe('writeCsv error handling', () => {
       },
     });
     await expect(writeCsv(makeResult(rows), w)).rejects.toThrow('late failure');
+  });
+});
+
+describe('neutralizeFormula', () => {
+  it.each([
+    ['=HYPERLINK("http://x","y")', `'=HYPERLINK("http://x","y")`],
+    ['+cmd|/c calc', "'+cmd|/c calc"],
+    ['-2+3', "'-2+3"],
+    ['@SUM(A1)', "'@SUM(A1)"],
+    ['\tx', "'\tx"],
+  ])('prefixes formula-like %j', (v, out) => {
+    expect(neutralizeFormula(v)).toBe(out);
+  });
+  it.each(['-5', '+1.5e3', '-0.25', 'plain', 'a=b', ''])('leaves %j alone', (v) => {
+    expect(neutralizeFormula(v)).toBe(v);
+  });
+  it('is applied to exported fields', async () => {
+    const chunks: string[] = [];
+    const out = new Writable({ write(c, _e, cb) { chunks.push(String(c)); cb(); } });
+    const row: DiffRow = { kind: 'changed', key: ['=1+1'], left: ['@x'], right: ['-7'], changedColumns: ['note'] };
+    await writeCsv(makeResult([row]), out);
+    const body = chunks.join('');
+    expect(body).toContain("'=1+1");
+    expect(body).toContain("'@x");
+    expect(body).toMatch(/,-7(\r\n|,)/);
   });
 });

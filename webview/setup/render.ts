@@ -1,4 +1,5 @@
 import type { ColumnInfo, PoolType, Side } from '../../src/core/types';
+import { filterProblem } from '../../src/sql/filterGuard';
 
 export interface SideState {
   profileId?: string;
@@ -65,6 +66,8 @@ export function canRun(state: SetupState): { ok: boolean; reason?: string } {
   const ex = new Set(state.excludedColumns.map(lc));
   const clash = state.keyColumns.find((k) => ex.has(lc(k)));
   if (clash !== undefined) return { ok: false, reason: `Key column "${clash}" is also excluded.` };
+  const filterIssue = filterProblem(state.filter);
+  if (filterIssue) return { ok: false, reason: filterIssue };
   return { ok: true };
 }
 

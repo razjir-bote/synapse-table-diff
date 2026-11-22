@@ -54,6 +54,11 @@ describe('canRun', () => {
   it('ok with a key', () => {
     expect(canRun(state({ keyColumns: ['Id'] })).ok).toBe(true);
   });
+  it('false with an unsafe filter, with the reason', () => {
+    const r = canRun(state({ keyColumns: ['Id'], filter: '1=1; DELETE FROM t' }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/";"/);
+  });
   it('false when a side is incomplete', () => {
     const s = state({ keyColumns: ['Id'] });
     s.sides.right.table = undefined;

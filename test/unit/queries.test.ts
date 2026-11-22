@@ -30,6 +30,11 @@ const SEG = (v: string) =>
   `CASE WHEN ${v} IS NULL THEN N'~' ELSE N'#' + CAST(DATALENGTH(${v})/2 AS nvarchar(20)) + N':' + ${v} END`;
 
 describe('queries', () => {
+  it('refuses an unsafe filter instead of embedding it', () => {
+    expect(() => bucketQuery(plan, 'left', ref, '1=1; DROP TABLE dbo.t', 1)).toThrow(/";"/);
+    expect(() => pairQuery(plan, 'left', ref, 'a = 1) OR (1 = 1', { level: 1, ids: [] })).toThrow(/matching/);
+  });
+
   it('all generated queries pass the allow-list', () => {
     const all = [
       engineEditionQuery(), listDatabasesQuery(), listObjectsQuery(),

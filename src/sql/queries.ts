@@ -1,6 +1,8 @@
 import type { ColumnInfo, ColumnPairPlan, ComparePlan, Side, TableRef } from '../core/types';
 import { normalizeExpr } from './normalize';
 import { qualifiedName, quoteIdent, sqlString } from './sqlText';
+import { filterProblem } from './filterGuard';
+import { ComparePlanError } from '../core/errors';
 
 export interface BucketFilter { level: 1 | 2; ids: number[] }
 
@@ -113,6 +115,8 @@ function hashedTable(
     `${knull} AS knull`,
     ...extra,
   ].join(', ');
+  const problem = filterProblem(filter);
+  if (problem) throw new ComparePlanError(problem);
   const where = filter !== undefined && filter.trim() !== '' ? ` WHERE (\n${filter}\n)` : '';
   const from =
     `FROM (SELECT h.*, CAST(SUBSTRING(h.kh,1,3) AS int) AS b24 FROM (SELECT ${inner} ` +

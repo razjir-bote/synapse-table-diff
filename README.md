@@ -33,6 +33,10 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 Run **Table Diff: Add Connection** from the Command Palette (`Ctrl+Shift+P`).
 
+> **Use a read-only login.** The extension only reads, but give it a login or Entra identity that
+> can only read (for example the `db_datareader` role) on both sides, especially production. That
+> is the real safeguard if a filter or a future bug ever sends something unexpected.
+
 1. Enter a name, the server (for example `myworkspace.sql.azuresynapse.net`) and the database.
 2. Choose the authentication method:
    - **Entra ID:** sign in through VS Code's Microsoft account. You can give an optional tenant ID.
@@ -55,6 +59,9 @@ To remove a connection, run **Table Diff: Remove Connection**.
 4. Choose **Columns to compare**. By default every shared column is compared. Exclude load
    timestamps or other columns that should not count as differences.
 5. Optionally enter a **filter**: a T-SQL `WHERE` condition applied to both sides, for example a date range.
+   It must be a single condition: `;`, `/* */` comments, unbalanced parentheses and statement words such as
+   `INSERT`, `UPDATE`, `DELETE`, `DROP`, `EXEC`, `INTO` or `GO` are rejected (inside quoted strings or
+   `[bracketed]` names they are fine).
 6. Optionally tick **ignore case** or **ignore trailing spaces**. By default comparisons are exact.
 7. Start the comparison. Progress shows each stage: schema, checksums, narrowing, key comparison and
    changed rows. You can cancel at any time. Cancelling stops the queries on both sides and shows
@@ -92,7 +99,9 @@ The tabs are:
   the result is incomplete for them.
 
 Use **Open in diff editor** to see the differences as aligned text in VS Code's diff editor, or
-**Export CSV** to save them. The export is streamed to disk.
+**Export CSV** to save them. The export is streamed to disk. Values that a spreadsheet would treat as a
+formula (starting with `=`, `+`, `-`, `@` or a tab, other than plain numbers such as `-5`) are written with a
+leading `'`, so opening the file in Excel cannot run them.
 
 ## Settings
 

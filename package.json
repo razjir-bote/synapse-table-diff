@@ -2,7 +2,7 @@
   "name": "synapse-table-diff",
   "displayName": "Table Diff",
   "description": "Compare SQL Server and Azure Synapse tables",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -12,10 +12,22 @@
   "activationEvents": [],
   "contributes": {
     "commands": [
-      { "command": "tableDiff.compare", "title": "Table Diff: Compare Tables…" },
-      { "command": "tableDiff.addConnection", "title": "Table Diff: Add Connection" },
-      { "command": "tableDiff.removeConnection", "title": "Table Diff: Remove Connection" },
-      { "command": "tableDiff.rerunRecent", "title": "Table Diff: Re-run Recent…" }
+      {
+        "command": "tableDiff.compare",
+        "title": "Table Diff: Compare Tables…"
+      },
+      {
+        "command": "tableDiff.addConnection",
+        "title": "Table Diff: Add Connection"
+      },
+      {
+        "command": "tableDiff.removeConnection",
+        "title": "Table Diff: Remove Connection"
+      },
+      {
+        "command": "tableDiff.rerunRecent",
+        "title": "Table Diff: Re-run Recent…"
+      }
     ],
     "configuration": {
       "title": "Table Diff",

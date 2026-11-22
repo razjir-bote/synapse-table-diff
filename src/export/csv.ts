@@ -4,9 +4,22 @@ import type { CompareResult, DiffRow } from '../core/types';
 const BOM = '\uFEFF';
 const FLUSH_CHARS = 64 * 1024;
 
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * Spreadsheet apps run cells that start with = + - @ (or a tab/CR) as formulas, so a
+ * value from the database could trigger a formula or DDE payload when the CSV is opened.
+ * Such values get a leading apostrophe; plain numbers like -5 or +1.5e3 are left as they are.
+ */
+export function neutralizeFormula(v: string): string {
+  return FORMULA_START.test(v) && !PLAIN_NUMBER.test(v) ? "'" + v : v;
+}
+
 /** RFC 4180 field quoting; null becomes an empty field. */
 function field(v: string | null | undefined): string {
   if (v === null || v === undefined) return '';
+  v = neutralizeFormula(v);
   if (/[",\r\n]/.test(v)) return '"' + v.replace(/"/g, '""') + '"';
   return v;
 }

@@ -2,7 +2,8 @@ import type { QueryRunner, SideConnector } from '../db/runner';
 import { bucketQuery, columnsQuery, detailQuery, pairQuery, type BucketFilter } from '../sql/queries';
 import { compareBuckets } from './buckets';
 import { buildDiffRow } from './cellDiff';
-import { CompareCancelledError } from './errors';
+import { CompareCancelledError, ComparePlanError } from './errors';
+import { filterProblem } from '../sql/filterGuard';
 import { mergePairs } from './merge';
 import { diffSchema } from './schemaDiff';
 import type {
@@ -155,6 +156,9 @@ function capFilter(level: 1 | 2, ids: number[], cap: number): BucketFilter {
 
 export async function runComparison(req: CompareRequest, deps: PipelineDeps): Promise<CompareResult> {
   const started = Date.now();
+  // Reject an unsafe filter before opening any connection.
+  const filterIssue = filterProblem(req.filter);
+  if (filterIssue) throw new ComparePlanError(filterIssue);
   const { signal, limits } = deps;
   const progress = (stage: Stage, detail?: string) => deps.onProgress?.(stage, detail);
   const tables: Record<Side, TableRef> = { left: req.left, right: req.right };

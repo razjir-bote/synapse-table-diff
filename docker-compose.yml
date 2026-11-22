@@ -5,4 +5,4 @@ services:
       ACCEPT_EULA: "Y"
     env_file: .env
     ports:
-      - "14333:1433"
+      - "127.0.0.1:14333:1433"
