@@ -24,14 +24,29 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 ## Install from the .vsix
 
-1. Build the package (see Building) or obtain `synapse-table-diff-0.1.0.vsix`.
+1. Build the package (see Building) or obtain `synapse-table-diff-0.2.0.vsix`.
 2. In VS Code, open the Extensions view, choose **...** > **Install from VSIX…**, and select the file.
-   Or run `code --install-extension synapse-table-diff-0.1.0.vsix`.
+   Or run `code --install-extension synapse-table-diff-0.2.0.vsix`.
 3. Reload the window if VS Code asks.
+
+## The Table Diff sidebar
+
+Click the **Table Diff** icon in the activity bar on the left to open the sidebar. You can do
+everything from there without the Command Palette:
+
+- **Connections:** your saved connections. Use **+** in the title bar to add one, and the bin icon
+  on a row (or right-click > Remove Connection) to remove it.
+- **Recent Comparisons:** your last 10 comparisons. Click one to open it pre-filled in the setup
+  form, or press **▶** to run it again straight away.
+- **New comparison** (the diff icon in the title bar) opens the setup form.
+
+When a list is empty, the sidebar shows buttons to add a connection or start a comparison. Every
+action is also available as a `Table Diff:` command in the Command Palette.
 
 ## Adding connections
 
-Run **Table Diff: Add Connection** from the Command Palette (`Ctrl+Shift+P`).
+Click **+** in the sidebar's Connections title bar, or run **Table Diff: Add Connection** from the
+Command Palette (`Ctrl+Shift+P`).
 
 > **Use a read-only login.** The extension only reads, but give it a login or Entra identity that
 > can only read (for example the `db_datareader` role) on both sides, especially production. That
@@ -154,7 +169,7 @@ npm run compile        # bundles dist/extension.js and the webviews
 npm run typecheck
 npm test               # unit tests, no database needed
 npm run test:integration   # needs the local SQL Server: docker compose up -d, and .env (see .env.example)
-npm run package        # writes synapse-table-diff-0.1.0.vsix
+npm run package        # writes synapse-table-diff-0.2.0.vsix
 ```
 
 `npm run package` runs `vsce package --allow-missing-repository --skip-license`. The package has no

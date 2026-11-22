@@ -2,7 +2,7 @@
   "name": "synapse-table-diff",
   "displayName": "Table Diff",
   "description": "Compare SQL Server and Azure Synapse tables",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "local",
   "private": true,
   "engines": {
@@ -14,11 +14,13 @@
     "commands": [
       {
         "command": "tableDiff.compare",
-        "title": "Table Diff: Compare Tables…"
+        "title": "Table Diff: Compare Tables…",
+        "icon": "$(diff)"
       },
       {
         "command": "tableDiff.addConnection",
-        "title": "Table Diff: Add Connection"
+        "title": "Table Diff: Add Connection",
+        "icon": "$(add)"
       },
       {
         "command": "tableDiff.removeConnection",
@@ -27,6 +29,21 @@
       {
         "command": "tableDiff.rerunRecent",
         "title": "Table Diff: Re-run Recent…"
+      },
+      {
+        "command": "tableDiff.removeConnectionItem",
+        "title": "Remove Connection",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "tableDiff.openRecent",
+        "title": "Open in Setup Form",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "tableDiff.runRecent",
+        "title": "Run Again",
+        "icon": "$(play)"
       }
     ],
     "configuration": {
@@ -59,6 +76,97 @@
           "description": "Query timeout in seconds."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tableDiff",
+          "title": "Table Diff",
+          "icon": "media/table-diff.svg"
+        }
+      ]
+    },
+    "views": {
+      "tableDiff": [
+        {
+          "id": "tableDiff.connections",
+          "name": "Connections"
+        },
+        {
+          "id": "tableDiff.recent",
+          "name": "Recent Comparisons"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "tableDiff.connections",
+        "contents": "No connections yet. Add a SQL Server or Synapse connection to get started.\n[Add Connection](command:tableDiff.addConnection)\n[New Comparison](command:tableDiff.compare)"
+      },
+      {
+        "view": "tableDiff.recent",
+        "contents": "No comparisons yet.\n[New Comparison](command:tableDiff.compare)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "tableDiff.compare",
+          "when": "view == tableDiff.connections",
+          "group": "navigation@1"
+        },
+        {
+          "command": "tableDiff.addConnection",
+          "when": "view == tableDiff.connections",
+          "group": "navigation@2"
+        },
+        {
+          "command": "tableDiff.compare",
+          "when": "view == tableDiff.recent",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tableDiff.removeConnectionItem",
+          "when": "view == tableDiff.connections && viewItem == connection",
+          "group": "inline"
+        },
+        {
+          "command": "tableDiff.removeConnectionItem",
+          "when": "view == tableDiff.connections && viewItem == connection",
+          "group": "1_manage"
+        },
+        {
+          "command": "tableDiff.runRecent",
+          "when": "view == tableDiff.recent && viewItem == recent",
+          "group": "inline"
+        },
+        {
+          "command": "tableDiff.runRecent",
+          "when": "view == tableDiff.recent && viewItem == recent",
+          "group": "1_run@1"
+        },
+        {
+          "command": "tableDiff.openRecent",
+          "when": "view == tableDiff.recent && viewItem == recent",
+          "group": "1_run@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "tableDiff.removeConnectionItem",
+          "when": "false"
+        },
+        {
+          "command": "tableDiff.openRecent",
+          "when": "false"
+        },
+        {
+          "command": "tableDiff.runRecent",
+          "when": "false"
+        }
+      ]
     }
   },
   "scripts": {

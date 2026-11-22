@@ -77,16 +77,19 @@ export async function addConnection(store: ProfileStore): Promise<void> {
   await store.save(profile, password);
 }
 
-export async function removeConnection(store: ProfileStore): Promise<void> {
+export async function removeConnection(store: ProfileStore, profileId?: string): Promise<void> {
   const profiles = store.list();
   if (profiles.length === 0) {
     void vscode.window.showInformationMessage('No saved connections.');
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    profiles.map((p) => ({ label: p.name, description: `${p.server} / ${p.database}`, id: p.id })),
-    { placeHolder: 'Connection to remove' },
-  );
+  const given = profileId !== undefined ? profiles.find((p) => p.id === profileId) : undefined;
+  const pick = given
+    ? { label: given.name, id: given.id }
+    : await vscode.window.showQuickPick(
+        profiles.map((p) => ({ label: p.name, description: `${p.server} / ${p.database}`, id: p.id })),
+        { placeHolder: 'Connection to remove' },
+      );
   if (!pick) return;
   const ok = await vscode.window.showWarningMessage(`Remove connection "${pick.label}"?`, { modal: true }, 'Remove');
   if (ok === 'Remove') await store.remove(pick.id);

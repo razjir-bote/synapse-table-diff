@@ -2,7 +2,8 @@ import * as vscode from 'vscode';
 import * as fs from 'node:fs';
 import { ProfileStore } from './profiles/profileStore';
 import { RecentStore } from './profiles/recentStore';
-import { registerConnectionCommands } from './profiles/connectionCommands';
+import { registerConnectionCommands, removeConnection } from './profiles/connectionCommands';
+import { registerSidebar } from './ui/sidebar';
 import { entraTokenProvider, makeConnector } from './db/auth';
 import { runComparison } from './core/pipeline';
 import type { CompareRequest, CompareResult, TableRef } from './core/types';
@@ -75,6 +76,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
     connect: (profileId, database) => connect({ profileId, database }, limits().queryTimeoutSeconds),
     onRun: (req: CompareRequest) => void runFromRequest(req, env),
   };
+
+  registerSidebar(ctx, store, recent, {
+    removeConnection: (id) => removeConnection(store, id),
+    openRecent: (r) => SetupPanel.show(ctx, setupDeps, r),
+    runRecent: (r) => void runFromRequest(r, env),
+  });
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand('tableDiff.compare', () => SetupPanel.show(ctx, setupDeps)),

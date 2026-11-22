@@ -16,7 +16,19 @@ const PROFILES_KEY = 'tableDiff.profiles';
 const pwdKey = (id: string) => `tableDiff.pwd.${id}`;
 
 export class ProfileStore {
+  private readonly listeners = new Set<() => void>();
+
   constructor(private readonly state: vscode.Memento, private readonly secrets: vscode.SecretStorage) {}
+
+  /** Registers a callback fired after a profile is saved or removed; returns an unsubscribe function. */
+  onDidChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private changed(): void {
+    for (const l of this.listeners) l();
+  }
 
   list(): ConnectionProfile[] {
     return this.state.get<ConnectionProfile[]>(PROFILES_KEY, []) ?? [];
@@ -32,11 +44,13 @@ export class ProfileStore {
     if (i >= 0) all[i] = p; else all.push(p);
     await this.state.update(PROFILES_KEY, all);
     if (password !== undefined) await this.secrets.store(pwdKey(p.id), password);
+    this.changed();
   }
 
   async remove(id: string): Promise<void> {
     await this.state.update(PROFILES_KEY, this.list().filter((p) => p.id !== id));
     await this.secrets.delete(pwdKey(id));
+    this.changed();
   }
 
   password(id: string): Promise<string | undefined> {
