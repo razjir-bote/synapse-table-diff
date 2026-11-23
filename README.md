@@ -24,9 +24,9 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 ## Install from the .vsix
 
-1. Build the package (see Building) or obtain `synapse-table-diff-0.3.1.vsix`.
+1. Build the package (see Building) or obtain `synapse-table-diff-0.3.2.vsix`.
 2. In VS Code, open the Extensions view, choose **...** > **Install from VSIX…**, and select the file.
-   Or run `code --install-extension synapse-table-diff-0.3.1.vsix`.
+   Or run `code --install-extension synapse-table-diff-0.3.2.vsix`.
 3. Reload the window if VS Code asks.
 
 ## The Table Diff sidebar
@@ -195,7 +195,7 @@ npm run compile        # bundles dist/extension.js and the webviews
 npm run typecheck
 npm test               # unit tests, no database needed
 npm run test:integration   # needs the local SQL Server: docker compose up -d, and .env (see .env.example)
-npm run package        # writes synapse-table-diff-0.3.1.vsix
+npm run package        # writes synapse-table-diff-0.3.2.vsix
 ```
 
 `npm run package` runs `vsce package --allow-missing-repository --skip-license`. The package has no
