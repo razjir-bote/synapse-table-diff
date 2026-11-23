@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runFromRequest, recentLabel, readLimits, STAGE_MESSAGES, SERVERLESS_PROMPT, type CompareEnv } from '../../src/commands/compare';
+import { runFromRequest, recentLabel, readLimits, doneMessage, elapsed, STAGE_MESSAGES, SERVERLESS_PROMPT, type CompareEnv } from '../../src/commands/compare';
 import { CompareCancelledError, ComparePlanError, PausedPoolError, PoolUnavailableError } from '../../src/core/errors';
 import { DEFAULT_LIMITS, type CompareRequest, type CompareResult } from '../../src/core/types';
 import type { PipelineDeps } from '../../src/core/pipeline';
@@ -8,7 +8,11 @@ const ref = (name: string) => ({ profileId: 'p', database: 'db', schema: 'dbo', 
 const req: CompareRequest = {
   left: ref('orders'), right: ref('orders2'), keyColumns: ['id'], excludedColumns: [], ignoreCase: false, ignoreTrailingSpaces: false,
 };
-const result = { request: req } as CompareResult;
+const result = {
+  request: req, leftRows: 50_000, rightRows: 50_005, added: 5, removed: 10, changed: 54, durationMs: 41_500,
+  schema: { columns: [], differenceCount: 2 }, warnings: [], rows: [],
+} as unknown as CompareResult;
+const stripTime = (m: string) => m.replace(/ \(\d+:\d\d\)$/, '');
 
 function makeEnv(run: CompareEnv['runComparison'], over: Record<string, unknown> = {}) {
   let cancel: (() => void) | undefined;
@@ -37,7 +41,10 @@ describe('runFromRequest', () => {
   it('success: progress options, recent add, results shown', async () => {
     const { env } = makeEnv(async () => result);
     await runFromRequest(req, env);
-    expect((env.withProgress as any).mock.calls[0][0]).toMatchObject({ location: 15, cancellable: true, title: 'Table Diff' });
+    expect((env.withProgress as any).mock.calls[0][0]).toMatchObject({
+      location: 15, cancellable: true, title: 'Table Diff: dbo.orders ↔ dbo.orders2',
+    });
+    expect(env.showInformationMessage).toHaveBeenCalledWith(doneMessage(result));
     expect(env.addRecent).toHaveBeenCalledWith(req);
     expect(env.showResults).toHaveBeenCalledWith(result);
   });
@@ -95,17 +102,31 @@ describe('runFromRequest', () => {
     expect(env.showErrorMessage).toHaveBeenCalledWith(new PausedPoolError('s', 'd').message);
   });
 
-  it('maps stages to messages with optional detail', async () => {
+  it('reports connecting, then each stage (detail text when given), with elapsed time', async () => {
     const t = makeEnv(async (_r, deps: PipelineDeps) => {
       for (const s of Object.keys(STAGE_MESSAGES) as (keyof typeof STAGE_MESSAGES)[]) deps.onProgress!(s);
-      deps.onProgress!('details', '5 of 10');
+      deps.onProgress!('details', 'Fetching 5 of 10 rows…');
       return result;
     });
     await runFromRequest(req, t.env);
-    expect(t.reports).toEqual([
+    expect(t.reports.every((m) => / \(\d+:\d\d\)$/.test(m))).toBe(true);
+    expect(t.reports.map(stripTime)).toEqual([
+      'Connecting to both sides…', 'Connected to x (other) and x (other).',
       'Reading schemas…', 'Computing checksums…', 'Narrowing differences…', 'Comparing keys…', 'Fetching changed rows…',
-      'Fetching changed rows… 5 of 10',
+      'Fetching 5 of 10 rows…',
     ]);
+  });
+
+  it('formats elapsed time and the finished summary', () => {
+    expect(elapsed(0)).toBe('0:00');
+    expect(elapsed(125_900)).toBe('2:05');
+    expect(doneMessage(result)).toBe(
+      'Table Diff finished in 0:41: 54 changed, 5 added, 10 removed (50,000 vs 50,005 rows), 2 column differences.',
+    );
+    const same = { ...result, added: 0, removed: 0, changed: 0, warnings: ['x'], schema: { columns: [], differenceCount: 0 } };
+    expect(doneMessage(same as CompareResult)).toBe(
+      'Table Diff finished in 0:41: no row differences (50,000 vs 50,005 rows). See the warnings in the results.',
+    );
   });
 
   it('confirmExtraScan uses a modal warning', async () => {

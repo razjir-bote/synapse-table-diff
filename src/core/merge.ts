@@ -37,11 +37,17 @@ class RunReader {
   }
 }
 
+export interface MergeProgress { rowsRead: number; added: number; removed: number; changed: number }
+
+/** How often (in rows read across both sides) mergePairs reports progress. */
+export const PROGRESS_EVERY = 50_000;
+
 export async function mergePairs(
   left: AsyncIterable<PairRow>,
   right: AsyncIterable<PairRow>,
   detailLimit: number,
   signal?: AbortSignal,
+  onProgress?: (p: MergeProgress) => void,
 ): Promise<MergeResult> {
   const res: MergeResult = { added: 0, removed: 0, changed: 0, selected: [], duplicateSamples: [], nullKeySamples: [] };
   const cancelled = () => new CompareCancelledError('Comparison cancelled');
@@ -49,6 +55,9 @@ export async function mergePairs(
   let seen = 0;
   const tick = () => {
     if (++seen % CANCEL_EVERY === 0 && signal?.aborted) throw cancelled();
+    if (onProgress && seen % PROGRESS_EVERY === 0) {
+      onProgress({ rowsRead: seen, added: res.added, removed: res.removed, changed: res.changed });
+    }
   };
   const dupSamples: Record<Side, number> = { left: 0, right: 0 };
   const nullSamples: Record<Side, number> = { left: 0, right: 0 };

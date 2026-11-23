@@ -17,7 +17,7 @@ export function familyOf(c: ColumnInfo): Family {
   return FAMILIES[c.type] ?? 'unsupported';
 }
 
-type Opts = { ignoreCase: boolean; ignoreTrailingSpaces: boolean };
+type Opts = { ignoreCase: boolean; ignoreTrailingSpaces: boolean; nullEqualsBlank?: boolean };
 type PlanResult = { ok: true; norm: ColumnNorm } | { ok: false; reason: string };
 
 /** Precision and scale of an exact numeric column (money types have fixed values). */
@@ -70,6 +70,7 @@ export function planColumnPair(l: ColumnInfo, r: ColumnInfo, opts: Opts): PlanRe
       norm.rtrim = l.type === 'char' || l.type === 'nchar' || r.type === 'char' || r.type === 'nchar'
         || opts.ignoreTrailingSpaces;
       norm.upper = opts.ignoreCase;
+      if (opts.nullEqualsBlank) norm.blankAsNull = true;
       break;
     case 'datetime':
       norm.dtPrecision = rankToPrecision(Math.min(dtRank(l), dtRank(r)));
@@ -97,6 +98,8 @@ export function normalizeExpr(colSql: string, norm: ColumnNorm): string {
       let e = `CAST(${c} AS nvarchar(max))`;
       if (norm.rtrim) e = `RTRIM(${e})`;
       if (norm.upper) e = `UPPER(${e})`;
+      // T-SQL "=" pads with spaces, so this also matches spaces-only text.
+      if (norm.blankAsNull) e = `CASE WHEN ${e} = N'' THEN NULL ELSE ${e} END`;
       return e;
     }
     case 'datetime': {

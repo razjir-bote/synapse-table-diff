@@ -101,3 +101,14 @@ tr.changed td { color: var(--vscode-gitDecoration-modifiedResourceForeground); }
 .grid-row.added .cell { color: var(--vscode-gitDecoration-addedResourceForeground); }
 .grid-row.removed .cell { color: var(--vscode-gitDecoration-deletedResourceForeground); }
 .cell-changed { color: var(--vscode-gitDecoration-modifiedResourceForeground); background: var(--vscode-diffEditor-modifiedTextBackground); }
+
+/* Setup form: bulk include/exclude buttons above the excluded-columns list. */
+.bulk { display: flex; gap: 6px; margin-bottom: 4px; }
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-button-border, transparent);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }

@@ -9,6 +9,8 @@ export interface CompareRequest {
   filter?: string;
   ignoreCase: boolean;
   ignoreTrailingSpaces: boolean;
+  /** Treat NULL and blank (empty or spaces-only) text as equal in compared columns. Keys are unaffected. */
+  nullEqualsBlank?: boolean;
 }
 export interface ColumnInfo {
   name: string;
@@ -30,6 +32,8 @@ export interface ColumnNorm {
   dtPrecision?: DtPrecision;
   rtrim: boolean;
   upper: boolean;
+  /** Character columns only: blank text normalizes to NULL. */
+  blankAsNull?: boolean;
 }
 export interface ColumnPairPlan {
   name: string;

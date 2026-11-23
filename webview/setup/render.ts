@@ -19,6 +19,7 @@ export interface SetupState {
   filter: string;
   ignoreCase: boolean;
   ignoreTrailingSpaces: boolean;
+  nullEqualsBlank: boolean;
   error?: string;
   /** Keys/exclusions from a pre-filled request, applied once both sides are described. */
   pendingInitial?: { keys: string[]; excluded: string[] };
@@ -32,7 +33,17 @@ export interface SetupActions {
   onFilter(text: string): void;
   onIgnoreCase(on: boolean): void;
   onIgnoreTrailing(on: boolean): void;
+  onNullEqualsBlank(on: boolean): void;
+  /** true: exclude every shared non-key column; false: exclude none. */
+  onExcludeAll(on: boolean): void;
   onRun(): void;
+}
+
+/** The excluded list after "Exclude all" (every shared column except the keys) or "Include all" (none). */
+export function excludeAllColumns(state: SetupState, on: boolean): string[] {
+  if (!on) return [];
+  const keys = new Set(state.keyColumns.map(lc));
+  return sharedColumns(state).filter((c) => !keys.has(lc(c)));
 }
 
 export const SERVERLESS_NOTE =
@@ -138,10 +149,26 @@ function checklist(
   cols: string[],
   selected: string[],
   onToggle: (c: string, on: boolean) => void,
+  bulk?: { onAll: (on: boolean) => void; hint: string },
 ): HTMLElement {
   const box = el('fieldset', 'cols');
   box.appendChild(el('legend', undefined, title));
   if (cols.length === 0) box.appendChild(el('div', 'hint', 'Select both tables to list shared columns.'));
+  if (bulk && cols.length > 0) {
+    const bar = el('div', 'bulk');
+    const all = el('button', 'secondary', 'Exclude all');
+    all.type = 'button';
+    all.dataset.role = 'exclude-all';
+    all.addEventListener('click', () => bulk.onAll(true));
+    const none = el('button', 'secondary', 'Include all');
+    none.type = 'button';
+    none.dataset.role = 'include-all';
+    none.addEventListener('click', () => bulk.onAll(false));
+    bar.appendChild(all);
+    bar.appendChild(none);
+    box.appendChild(bar);
+    box.appendChild(el('div', 'hint', bulk.hint));
+  }
   const sel = new Set(selected.map(lc));
   for (const c of cols) {
     const label = el('label', 'check');
@@ -168,6 +195,8 @@ const NO_ACTIONS: SetupActions = {
   onFilter: noop,
   onIgnoreCase: noop,
   onIgnoreTrailing: noop,
+  onNullEqualsBlank: noop,
+  onExcludeAll: noop,
   onRun: noop,
 };
 
@@ -189,7 +218,13 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   const shared = sharedColumns(state);
   const lists = el('div', 'sides');
   lists.appendChild(checklist('Key columns', 'key', shared, state.keyColumns, actions.onToggleKey));
-  lists.appendChild(checklist('Excluded columns', 'exclude', shared, state.excludedColumns, actions.onToggleExclude));
+  const compared = shared.length - state.excludedColumns.length
+    - state.keyColumns.filter((k) => !state.excludedColumns.some((e) => lc(e) === lc(k))).length;
+  lists.appendChild(checklist('Excluded columns', 'exclude', shared, state.excludedColumns, actions.onToggleExclude, {
+    onAll: actions.onExcludeAll,
+    hint: `Comparing ${Math.max(0, compared)} of ${shared.length} shared columns (keys are always used for matching). ` +
+      'To compare only a few columns, click Exclude all, then untick the ones you want.',
+  }));
   root.appendChild(lists);
 
   const fl = el('label', 'row stack');
@@ -206,6 +241,7 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   const optDefs: [string, string, boolean, (on: boolean) => void][] = [
     ['ignoreCase', 'Ignore case', state.ignoreCase, actions.onIgnoreCase],
     ['ignoreTrailing', 'Ignore trailing spaces', state.ignoreTrailingSpaces, actions.onIgnoreTrailing],
+    ['nullEqualsBlank', 'Treat NULL and blank text as the same', state.nullEqualsBlank, actions.onNullEqualsBlank],
   ];
   for (const [role, text, on, cb] of optDefs) {
     const label = el('label', 'check');

@@ -1,7 +1,7 @@
 import type { CompareRequest, Side } from '../../src/core/types';
 import type { HostToSetup, SetupToHost } from '../../src/ui/protocol';
 import { applyHostMessage } from './reducer';
-import { canRun, renderSetup, type SetupActions, type SetupState } from './render';
+import { canRun, excludeAllColumns, renderSetup, type SetupActions, type SetupState } from './render';
 
 declare function acquireVsCodeApi(): { postMessage(m: SetupToHost): void };
 const vscode = acquireVsCodeApi();
@@ -16,6 +16,7 @@ let state: SetupState = {
   filter: '',
   ignoreCase: false,
   ignoreTrailingSpaces: false,
+  nullEqualsBlank: false,
 };
 const lc = (s: string) => s.toLowerCase();
 const post = (m: SetupToHost) => vscode.postMessage(m);
@@ -75,6 +76,13 @@ const actions: SetupActions = {
   onIgnoreTrailing(on) {
     state.ignoreTrailingSpaces = on;
   },
+  onNullEqualsBlank(on) {
+    state.nullEqualsBlank = on;
+  },
+  onExcludeAll(on) {
+    state.excludedColumns = excludeAllColumns(state, on);
+    draw();
+  },
   onRun() {
     if (!canRun(state).ok) return;
     const l = state.sides.left;
@@ -87,6 +95,7 @@ const actions: SetupActions = {
       filter: state.filter.trim() === '' ? undefined : state.filter,
       ignoreCase: state.ignoreCase,
       ignoreTrailingSpaces: state.ignoreTrailingSpaces,
+      nullEqualsBlank: state.nullEqualsBlank,
     };
     post({ type: 'run', request });
   },
@@ -106,6 +115,7 @@ function init(profiles: { id: string; name: string }[], initial?: CompareRequest
     filter: initial.filter ?? '',
     ignoreCase: initial.ignoreCase,
     ignoreTrailingSpaces: initial.ignoreTrailingSpaces,
+    nullEqualsBlank: initial.nullEqualsBlank === true,
   };
   state.pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
   for (const side of ['left', 'right'] as Side[]) {

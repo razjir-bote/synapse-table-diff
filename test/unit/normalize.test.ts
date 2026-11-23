@@ -6,7 +6,7 @@ function col(type: string, o: Partial<ColumnInfo> = {}): ColumnInfo {
   return { name: 'c', type, maxLength: 0, precision: 0, scale: 0, nullable: true, ordinal: 1, ...o };
 }
 const opts = { ignoreCase: false, ignoreTrailingSpaces: false };
-function norm(l: ColumnInfo, r: ColumnInfo, o = opts): ColumnNorm {
+function norm(l: ColumnInfo, r: ColumnInfo, o: Parameters<typeof planColumnPair>[2] = opts): ColumnNorm {
   const p = planColumnPair(l, r, o);
   if (!p.ok) throw new Error(p.reason);
   return p.norm;
@@ -129,5 +129,23 @@ describe('planColumnPair', () => {
   it('decimal(38,0) vs decimal(38,10) excluded', () => {
     const r = planColumnPair(col('decimal', { precision: 38, scale: 0 }), col('decimal', { precision: 38, scale: 10 }), opts);
     expect(r).toEqual({ ok: false, reason: 'decimal precision too large (48 digits needed)' });
+  });
+});
+
+describe('nullEqualsBlank', () => {
+  it('turns blank text into NULL for character columns only', () => {
+    const n = norm(col('varchar'), col('nvarchar'), { ...opts, nullEqualsBlank: true });
+    expect(n.blankAsNull).toBe(true);
+    expect(normalizeExpr('[c]', n)).toBe("CASE WHEN CAST([c] AS nvarchar(max)) = N'' THEN NULL ELSE CAST([c] AS nvarchar(max)) END");
+    expect(norm(col('int'), col('int'), { ...opts, nullEqualsBlank: true }).blankAsNull).toBeUndefined();
+  });
+  it('wraps after trimming and upper-casing', () => {
+    const n = norm(col('char'), col('varchar'), { ignoreCase: true, ignoreTrailingSpaces: false, nullEqualsBlank: true });
+    expect(normalizeExpr('[c]', n)).toBe(
+      "CASE WHEN UPPER(RTRIM(CAST([c] AS nvarchar(max)))) = N'' THEN NULL ELSE UPPER(RTRIM(CAST([c] AS nvarchar(max)))) END",
+    );
+  });
+  it('is off by default', () => {
+    expect(norm(col('varchar'), col('varchar')).blankAsNull).toBeUndefined();
   });
 });

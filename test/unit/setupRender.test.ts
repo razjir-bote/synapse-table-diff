@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { renderSetup, canRun, sharedColumns, defaultKey, SERVERLESS_NOTE, type SetupState } from '../../webview/setup/render';
+import { renderSetup, canRun, sharedColumns, defaultKey, excludeAllColumns, SERVERLESS_NOTE, type SetupState } from '../../webview/setup/render';
 import type { ColumnInfo } from '../../src/core/types';
 
 const col = (name: string, ordinal = 1): ColumnInfo => ({ name, type: 'int', maxLength: 4, precision: 10, scale: 0, nullable: false, ordinal });
@@ -16,7 +16,7 @@ function state(over: Partial<SetupState> = {}): SetupState {
   return {
     profiles: [{ id: 'p', name: 'Prof' }],
     sides: { left: side(['Id', 'Name', 'OnlyL'], ['Id']), right: side(['id', 'NAME', 'OnlyR']) },
-    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, ...over,
+    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, nullEqualsBlank: false, ...over,
   };
 }
 
@@ -181,5 +181,34 @@ describe('table list labels', () => {
     renderSetup(root, state({ sides: { left: side(['Id'], [], { objects }), right: side(['id']) } }));
     const labels = Array.from(root.querySelectorAll('[data-role="left-table"] option')).map((o) => o.textContent);
     expect(labels).toEqual(['(choose table or view)', 'dbo.t', 'dbo.v (view)', 'ext.e (external table)']);
+  });
+});
+
+describe('exclude all / include all', () => {
+  it('excludes every shared non-key column, or none', () => {
+    const s = state({ keyColumns: ['Id'] });
+    expect(excludeAllColumns(s, true)).toEqual(['Name']);
+    expect(excludeAllColumns(s, false)).toEqual([]);
+  });
+  it('renders both buttons and the compared-column count', () => {
+    const root = document.createElement('div');
+    const calls: boolean[] = [];
+    const noop = () => undefined;
+    renderSetup(root, state({ keyColumns: ['Id'] }), {
+      onProfile: noop, onDatabase: noop, onTable: noop, onToggleKey: noop, onToggleExclude: noop,
+      onFilter: noop, onIgnoreCase: noop, onIgnoreTrailing: noop, onNullEqualsBlank: noop,
+      onExcludeAll: (on) => calls.push(on), onRun: noop,
+    });
+    (root.querySelector('[data-role="exclude-all"]') as HTMLButtonElement).click();
+    (root.querySelector('[data-role="include-all"]') as HTMLButtonElement).click();
+    expect(calls).toEqual([true, false]);
+    expect(root.textContent).toContain('Comparing 1 of 2 shared columns');
+  });
+  it('renders the NULL = blank option', () => {
+    const root = document.createElement('div');
+    renderSetup(root, state({ nullEqualsBlank: true }));
+    const cb = root.querySelector('[data-role="nullEqualsBlank"]') as HTMLInputElement;
+    expect(cb.checked).toBe(true);
+    expect(cb.parentElement?.textContent).toContain('Treat NULL and blank text as the same');
   });
 });

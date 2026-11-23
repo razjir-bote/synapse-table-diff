@@ -133,3 +133,12 @@ describe('diffSchema', () => {
     expect(() => diffSchema(left, right, req({ keyColumns: ['id', 'ID'] }))).toThrow(/more than once/);
   });
 });
+
+describe('diffSchema nullEqualsBlank', () => {
+  it('applies to compared columns but never to keys', () => {
+    const cols = ordered([col('code', 'varchar'), col('note', 'nvarchar')]);
+    const { plan } = diffSchema(cols, cols, req({ keyColumns: ['code'], nullEqualsBlank: true }));
+    expect(plan.keys[0].norm.blankAsNull).toBeUndefined();
+    expect(plan.compared.find((c) => c.name === 'note')?.norm.blankAsNull).toBe(true);
+  });
+});

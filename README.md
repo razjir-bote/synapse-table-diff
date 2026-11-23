@@ -24,9 +24,9 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 ## Install from the .vsix
 
-1. Build the package (see Building) or obtain `synapse-table-diff-0.2.0.vsix`.
+1. Build the package (see Building) or obtain `synapse-table-diff-0.3.0.vsix`.
 2. In VS Code, open the Extensions view, choose **...** > **Install from VSIX…**, and select the file.
-   Or run `code --install-extension synapse-table-diff-0.2.0.vsix`.
+   Or run `code --install-extension synapse-table-diff-0.3.0.vsix`.
 3. Reload the window if VS Code asks.
 
 ## The Table Diff sidebar
@@ -72,14 +72,25 @@ To remove a connection, run **Table Diff: Remove Connection**.
 2. Choose the **Left** and **Right** connection, then the schema and table, view or external table on each side.
 3. Choose one or more **key columns**. Declared primary or unique keys are pre-filled when they exist.
 4. Choose **Columns to compare**. By default every shared column is compared. Exclude load
-   timestamps or other columns that should not count as differences.
+   timestamps or other columns that should not count as differences. To compare only a few columns,
+   click **Exclude all**, then untick the ones you want; **Include all** clears the list. Key columns
+   are never excluded, and the form shows how many columns will be compared.
 5. Optionally enter a **filter**: a T-SQL `WHERE` condition applied to both sides, for example a date range.
    It must be a single condition: `;`, `/* */` comments, unbalanced parentheses and statement words such as
    `INSERT`, `UPDATE`, `DELETE`, `DROP`, `EXEC`, `INTO` or `GO` are rejected (inside quoted strings or
    `[bracketed]` names they are fine).
-6. Optionally tick **ignore case** or **ignore trailing spaces**. By default comparisons are exact.
-7. Start the comparison. Progress shows each stage: schema, checksums, narrowing, key comparison and
-   changed rows. You can cancel at any time. Cancelling stops the queries on both sides and shows
+6. Optionally tick **ignore case**, **ignore trailing spaces**, or **treat NULL and blank text as the
+   same**. By default comparisons are exact.
+7. Start the comparison. The progress notification is titled with the two tables and shows what is
+   happening, with the elapsed time ticking every few seconds:
+   - connecting, then which connections and pool types were reached;
+   - which columns are compared, and that each table is being scanned for checksums;
+   - row counts on each side and how many checksum groups differ (about how many rows that covers);
+   - live counts while keys are compared (`Compared 150,000 of about 1,200,000 rows: 12 changed, 3 added, 0 removed so far…`);
+   - the totals found and how many rows are being fetched to show.
+
+   When it finishes, a notification summarises the result (time taken, changed / added / removed and
+   row counts). You can cancel at any time. Cancelling stops the queries on both sides and shows
    `Comparison cancelled.`
 
 Recent comparisons are saved. Run **Table Diff: Re-run Recent…** to reopen one in the setup form.
@@ -143,6 +154,10 @@ without that extra scan.
 
 ## How values are compared
 
+- **Treat NULL and blank text as the same** (off by default): in compared text columns, NULL, an empty
+  string and a spaces-only string all count as equal. It does not apply to key columns, or to
+  non-text columns (a number can't be blank).
+
 - Columns are matched by name, case-insensitively. Column order does not matter.
 - Columns of the same family (for example `varchar` and `nvarchar`, or `datetime` and `datetime2`)
   are compared by value, so storage type alone does not produce differences.
@@ -169,7 +184,7 @@ npm run compile        # bundles dist/extension.js and the webviews
 npm run typecheck
 npm test               # unit tests, no database needed
 npm run test:integration   # needs the local SQL Server: docker compose up -d, and .env (see .env.example)
-npm run package        # writes synapse-table-diff-0.2.0.vsix
+npm run package        # writes synapse-table-diff-0.3.0.vsix
 ```
 
 `npm run package` runs `vsce package --allow-missing-repository --skip-license`. The package has no

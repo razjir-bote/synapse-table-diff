@@ -78,6 +78,15 @@ function deps(over: Partial<PipelineDeps> = {}, limits: Partial<Limits> = {}): P
 }
 
 describe('runComparison: orders', () => {
+  it('reports detailed progress for each stage', async () => {
+    const msgs: string[] = [];
+    await runComparison(req('orders', ['order_id']), deps({ onProgress: (_s, d) => msgs.push(d ?? '') }));
+    expect(msgs[0]).toMatch(/^Reading the columns of dbo\.orders on .+ and dbo\.orders on .+…$/);
+    expect(msgs[1]).toMatch(/^Comparing 5 columns, matched on 1 key column\. Computing checksums/);
+    expect(msgs.some((m) => /^Checksums done: 50,000 rows on the left, 49,995 on the right\. \d+ of 4,096 checksum groups differ/.test(m))).toBe(true);
+    expect(msgs.at(-1)).toBe('Found 54 changed, 5 added, 10 removed. Fetching 69 of them to show…');
+  });
+
   it('defaults: removed 10, added 5, changed 54, schema diffs, no type-only data diffs', async () => {
     const res = await runComparison(req('orders', ['order_id']), deps());
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 54 });
@@ -129,6 +138,12 @@ describe('runComparison: orders', () => {
   it('ignoreTrailingSpaces gives changed 53', async () => {
     const res = await runComparison(req('orders', ['order_id'], { ignoreTrailingSpaces: true }), deps());
     expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 53 });
+  });
+
+  it('nullEqualsBlank treats the NULL vs empty note (key 300) as equal: changed 53', async () => {
+    const res = await runComparison(req('orders', ['order_id'], { nullEqualsBlank: true }), deps());
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 10, added: 5, changed: 53 });
+    expect(res.rows.some((r) => r.key[0] === '300')).toBe(false);
   });
 
   it('detailLimit 20 caps rows, counts unchanged', async () => {

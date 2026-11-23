@@ -119,3 +119,23 @@ describe('mergePairs', () => {
     await expect(mergePairs(gen([p(1, 1)]), gen([]), 10, ac.signal)).rejects.toBeInstanceOf(CompareCancelledError);
   });
 });
+
+describe('mergePairs progress', () => {
+  it('reports running counts every 50,000 rows read', async () => {
+    const mk = (i: number, rh: number): PairRow => {
+      const kh = Buffer.alloc(32);
+      kh.writeUInt32BE(i, 0);
+      const h = Buffer.alloc(32);
+      h.writeUInt32BE(rh, 0);
+      return { kh, rh: h, knull: 0, b2: 0, keys: [i] };
+    };
+    const left = Array.from({ length: 30_000 }, (_, i) => mk(i, i % 1000 === 0 ? 1 : 0));
+    const right = Array.from({ length: 30_000 }, (_, i) => mk(i, 0));
+    const seen: { rowsRead: number; changed: number }[] = [];
+    const res = await mergePairs(gen(left), gen(right), 10, undefined, (p) => seen.push({ rowsRead: p.rowsRead, changed: p.changed }));
+    expect(res.changed).toBe(30);
+    expect(seen.map((s) => s.rowsRead)).toEqual([50_000]);
+    expect(seen[0].changed).toBeGreaterThan(0);
+    expect(seen[0].changed).toBeLessThanOrEqual(30);
+  });
+});

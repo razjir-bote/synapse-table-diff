@@ -27,6 +27,8 @@ export function diffSchema(
   const L = index(left, sharedNames);
   const R = index(right, sharedNames);
   const opts = { ignoreCase: req.ignoreCase, ignoreTrailingSpaces: req.ignoreTrailingSpaces };
+  // NULL = blank applies to compared columns only: a blank key must stay a real key, not become a NULL key.
+  const comparedOpts = { ...opts, nullEqualsBlank: req.nullEqualsBlank === true };
 
   const columns: SchemaColumnDiff[] = [];
   for (const [k, l] of L) {
@@ -56,8 +58,8 @@ export function diffSchema(
   };
 
   const excludedByUser = new Set(req.excludedColumns.map((c) => c.toLowerCase()));
-  const toPlan = (l: ColumnInfo, r: ColumnInfo) => {
-    const p = planColumnPair(l, r, opts);
+  const toPlan = (l: ColumnInfo, r: ColumnInfo, forKey: boolean) => {
+    const p = planColumnPair(l, r, forKey ? opts : comparedOpts);
     return p.ok
       ? { ok: true as const, plan: { name: l.name, leftName: l.name, rightName: r.name, norm: p.norm, leftCol: l, rightCol: r } as ColumnPairPlan }
       : { ok: false as const, reason: p.reason };
@@ -75,7 +77,7 @@ export function diffSchema(
     if (!l || !r) {
       throw new ComparePlanError(`Key column ${name} is missing on the ${!l && !r ? 'left and right sides' : !l ? 'left side' : 'right side'}`);
     }
-    const p = toPlan(l.col, r.col);
+    const p = toPlan(l.col, r.col, true);
     if (!p.ok) throw new ComparePlanError(`Key column ${name} cannot be compared: ${p.reason}`);
     keyLower.add(k);
     keys.push(p.plan);
@@ -91,7 +93,7 @@ export function diffSchema(
       excluded.push({ name: l.name, reason: 'excluded by user' });
       continue;
     }
-    const p = toPlan(l, r);
+    const p = toPlan(l, r, false);
     if (p.ok) compared.push(p.plan);
     else excluded.push({ name: l.name, reason: p.reason });
   }

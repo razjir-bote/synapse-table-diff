@@ -154,6 +154,9 @@ function capFilter(level: 1 | 2, ids: number[], cap: number): BucketFilter {
   return { level, ids };
 }
 
+const num = (n: number) => n.toLocaleString('en-US');
+const plural = (n: number, word: string) => `${num(n)} ${word}${n === 1 ? '' : 's'}`;
+
 export async function runComparison(req: CompareRequest, deps: PipelineDeps): Promise<CompareResult> {
   const started = Date.now();
   // Reject an unsafe filter before opening any connection.
@@ -165,8 +168,9 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
   const poolTypes = { left: deps.left.poolType, right: deps.right.poolType };
 
   try {
+    const where = (s: Side) => `${tables[s].schema}.${tables[s].name} on ${deps[s].label}`;
     // 1. schema
-    progress('schema');
+    progress('schema', `Reading the columns of ${where('left')} and ${where('right')}…`);
     const cols = await withRunners(deps, async (r, sig) => {
       const [l, rr] = await Promise.all(SIDES.map((s) => r[s].query(columnsQuery(tables[s]), sig)));
       return { left: l.map(toColumn), right: rr.map(toColumn) };
@@ -175,7 +179,9 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
     const { schema, plan } = diffSchema(cols.left, cols.right, req);
 
     // 2. level-1 checksums
-    progress('checksums');
+    progress('checksums',
+      `Comparing ${plural(plan.compared.length, 'column')}, matched on ${plural(plan.keys.length, 'key column')}. ` +
+      'Computing checksums for both tables (one full scan of each)…');
     const bucketsAt = (level: 1 | 2, within?: BucketFilter) =>
       withRunners(deps, async (r, sig) => {
         const [l, rr] = await Promise.all(
@@ -220,7 +226,9 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
       const go = serverless.length === 0 || (deps.confirmExtraScan ? await deps.confirmExtraScan(serverless) : false);
       checkAbort(signal);
       if (go) {
-        progress('rebucket');
+        progress('rebucket',
+          `${num(l1.mismatched.length + l1.problem.length)} of 4,096 checksum groups differ (about ${num(l1.rowsInScope)} rows). ` +
+          'Splitting them into finer groups with one more scan…');
         const l2 = await bucketsAt(2, { level: 1, ids: within });
         checkAbort(signal);
         const l2Ids = [...l2.mismatched, ...l2.problem];
@@ -230,20 +238,31 @@ export async function runComparison(req: CompareRequest, deps: PipelineDeps): Pr
     }
 
     // 4. pair compare
-    progress('compare');
+    const groups = l1.mismatched.length + l1.problem.length;
+    progress('compare',
+      `Checksums done: ${num(l1.leftRows)} rows on the left, ${num(l1.rightRows)} on the right. ` +
+      `${num(groups)} of 4,096 checksum groups differ (about ${num(l1.rowsInScope)} rows). Comparing row keys…`);
     const merge = await withRunners(deps, (r, sig) =>
       mergePairs(
         toPairs(r.left.stream(pairQuery(plan, 'left', tables.left, req.filter, pairFilter), sig), plan.keys.length),
         toPairs(r.right.stream(pairQuery(plan, 'right', tables.right, req.filter, pairFilter), sig), plan.keys.length),
         limits.detailLimit,
         sig,
+        (p) => progress('compare',
+          `Compared ${num(p.rowsRead)} of about ${num(l1.rowsInScope)} rows: ` +
+          `${num(p.changed)} changed, ${num(p.added)} added, ${num(p.removed)} removed so far…`),
       ));
     checkAbort(signal);
 
     // 5. details: only the keys in the first inListCap level-2 buckets, so the detail pass never scans more
     const browse = browsableKeys(merge.selected, limits.inListCap);
+    if (browse.keys.length > 0) {
+      progress('details',
+        `Found ${num(merge.changed)} changed, ${num(merge.added)} added, ${num(merge.removed)} removed. ` +
+        `Fetching ${num(browse.keys.length)} of them to show…`);
+    }
     const rows = browse.keys.length > 0
-      ? await fetchDetails(req, plan, browse.keys, browse.b2, tables, deps, progress)
+      ? await fetchDetails(req, plan, browse.keys, browse.b2, tables, deps)
       : [];
     checkAbort(signal);
 
@@ -286,9 +305,7 @@ async function fetchDetails(
   b2Ids: number[],
   tables: Record<Side, TableRef>,
   deps: PipelineDeps,
-  progress: (stage: Stage, detail?: string) => void,
 ): Promise<DiffRow[]> {
-  progress('details');
   const expected: Record<Side, Set<string>> = { left: new Set(), right: new Set() };
   for (const k of selected) {
     if (k.kind !== 'added') expected.left.add(k.khHex);
