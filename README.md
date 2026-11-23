@@ -24,9 +24,9 @@ removed and changed row, down to the cell. Built for Azure Synapse **dedicated**
 
 ## Install from the .vsix
 
-1. Build the package (see Building) or obtain `synapse-table-diff-0.3.0.vsix`.
+1. Build the package (see Building) or obtain `synapse-table-diff-0.3.1.vsix`.
 2. In VS Code, open the Extensions view, choose **...** > **Install from VSIX…**, and select the file.
-   Or run `code --install-extension synapse-table-diff-0.3.0.vsix`.
+   Or run `code --install-extension synapse-table-diff-0.3.1.vsix`.
 3. Reload the window if VS Code asks.
 
 ## The Table Diff sidebar
@@ -124,8 +124,19 @@ The tabs are:
 - **Key problems:** duplicate and NULL key samples. Those keys are left out of the data diff, so
   the result is incomplete for them.
 
-Use **Open in diff editor** to see the differences as aligned text in VS Code's diff editor, or
-**Export CSV** to save them. The export is streamed to disk. Values that a spreadsheet would treat as a
+Use **Open in diff editor** to see the differences side by side in VS Code's diff editor. Each
+differing key is a block that sits on exactly the same lines on both sides:
+
+```
+== CHANGED  order_id=200          | == CHANGED  order_id=200
+   amount  : 1.23                 |    amount  : 1.2400
+```
+
+For changed rows only the fields that differ are listed, one per line, so the diff editor highlights
+exactly those fields. Added and removed rows list every column on the side that has the row, with a
+note on the other side. NULL shows as `NULL` and an empty string as `''`.
+
+Use **Export CSV** to save the differences. The export is streamed to disk. Values that a spreadsheet would treat as a
 formula (starting with `=`, `+`, `-`, `@` or a tab, other than plain numbers such as `-5`) are written with a
 leading `'`, so opening the file in Excel cannot run them.
 
@@ -184,7 +195,7 @@ npm run compile        # bundles dist/extension.js and the webviews
 npm run typecheck
 npm test               # unit tests, no database needed
 npm run test:integration   # needs the local SQL Server: docker compose up -d, and .env (see .env.example)
-npm run package        # writes synapse-table-diff-0.3.0.vsix
+npm run package        # writes synapse-table-diff-0.3.1.vsix
 ```
 
 `npm run package` runs `vsce package --allow-missing-repository --skip-license`. The package has no
