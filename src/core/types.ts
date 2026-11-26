@@ -11,6 +11,11 @@ export interface CompareRequest {
   ignoreTrailingSpaces: boolean;
   /** Treat NULL and blank (empty or spaces-only) text as equal in compared columns. Keys are unaffected. */
   nullEqualsBlank?: boolean;
+  /**
+   * Compare columns whose data types differ instead of excluding them: numbers are compared as numbers where
+   * possible, anything else as text (each side converted to a canonical text form).
+   */
+  ignoreDataTypes?: boolean;
 }
 export interface ColumnInfo {
   name: string;
@@ -34,6 +39,11 @@ export interface ColumnNorm {
   upper: boolean;
   /** Character columns only: blank text normalizes to NULL. */
   blankAsNull?: boolean;
+  /**
+   * Set when the two sides have different types and are compared as text: each side is first rendered with its
+   * own type's normalization, then compared as nvarchar(max) with this norm's rtrim/upper/blankAsNull.
+   */
+  perSide?: { left: ColumnNorm; right: ColumnNorm };
 }
 export interface ColumnPairPlan {
   name: string;

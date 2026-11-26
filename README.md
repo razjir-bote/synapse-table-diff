@@ -79,8 +79,8 @@ To remove a connection, run **Table Diff: Remove Connection**.
    It must be a single condition: `;`, `/* */` comments, unbalanced parentheses and statement words such as
    `INSERT`, `UPDATE`, `DELETE`, `DROP`, `EXEC`, `INTO` or `GO` are rejected (inside quoted strings or
    `[bracketed]` names they are fine).
-6. Optionally tick **ignore case**, **ignore trailing spaces**, or **treat NULL and blank text as the
-   same**. By default comparisons are exact.
+6. Optionally tick **ignore case**, **ignore trailing spaces**, **treat NULL and blank text as the
+   same**, or **ignore data types**. By default comparisons are exact.
 7. Start the comparison. The progress notification is titled with the two tables and shows what is
    happening, with the elapsed time ticking every few seconds:
    - connecting, then which connections and pool types were reached;
@@ -168,6 +168,14 @@ without that extra scan.
 - **Treat NULL and blank text as the same** (off by default): in compared text columns, NULL, an empty
   string and a spaces-only string all count as equal. It does not apply to key columns, or to
   non-text columns (a number can't be blank).
+- **Ignore data types** (off by default): columns whose types differ are compared instead of skipped,
+  and can also be keys. Two numeric columns compare as numbers (`int` vs `decimal(10,2)`: `5` equals
+  `5.00`; anything with `float`/`real` compares as float; a decimal pair needing more than 38 digits
+  falls back to float). Any other mix compares as text: each side is first written in its own type's
+  canonical form (integers as `5`, dates as `2020-01-02`, datetimes as ISO `2020-01-02T03:04:05.000`,
+  binary as hex), so `'5'` equals `5`, but `'03/01/2020'` does not equal the date `2020-01-03`. The text
+  options above (case, trailing spaces, NULL = blank) apply to these comparisons. `xml`, `text` and
+  `ntext` columns are read as text; other unsupported types (spatial, `sql_variant`, etc.) are still skipped.
 
 - Columns are matched by name, case-insensitively. Column order does not matter.
 - Columns of the same family (for example `varchar` and `nvarchar`, or `datetime` and `datetime2`)

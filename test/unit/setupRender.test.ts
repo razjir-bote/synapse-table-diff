@@ -16,7 +16,7 @@ function state(over: Partial<SetupState> = {}): SetupState {
   return {
     profiles: [{ id: 'p', name: 'Prof' }],
     sides: { left: side(['Id', 'Name', 'OnlyL'], ['Id']), right: side(['id', 'NAME', 'OnlyR']) },
-    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, nullEqualsBlank: false, ...over,
+    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, nullEqualsBlank: false, ignoreDataTypes: false, ...over,
   };
 }
 
@@ -196,7 +196,7 @@ describe('exclude all / include all', () => {
     const noop = () => undefined;
     renderSetup(root, state({ keyColumns: ['Id'] }), {
       onProfile: noop, onDatabase: noop, onTable: noop, onToggleKey: noop, onToggleExclude: noop,
-      onFilter: noop, onIgnoreCase: noop, onIgnoreTrailing: noop, onNullEqualsBlank: noop,
+      onFilter: noop, onIgnoreCase: noop, onIgnoreTrailing: noop, onNullEqualsBlank: noop, onIgnoreDataTypes: noop,
       onExcludeAll: (on) => calls.push(on), onRun: noop,
     });
     (root.querySelector('[data-role="exclude-all"]') as HTMLButtonElement).click();
@@ -210,5 +210,12 @@ describe('exclude all / include all', () => {
     const cb = root.querySelector('[data-role="nullEqualsBlank"]') as HTMLInputElement;
     expect(cb.checked).toBe(true);
     expect(cb.parentElement?.textContent).toContain('Treat NULL and blank text as the same');
+  });
+  it('renders the ignore data types option', () => {
+    const root = document.createElement('div');
+    renderSetup(root, state({ ignoreDataTypes: true }));
+    const cb = root.querySelector('[data-role="ignoreDataTypes"]') as HTMLInputElement;
+    expect(cb.checked).toBe(true);
+    expect(cb.parentElement?.textContent).toContain('Ignore data types');
   });
 });

@@ -1,4 +1,4 @@
-import type { ColumnInfo, ColumnNorm, DtPrecision, Family } from '../core/types';
+import type { ColumnInfo, ColumnNorm, DtPrecision, Family, Side } from '../core/types';
 
 const FAMILIES: Record<string, Family> = {
   tinyint: 'integer', smallint: 'integer', int: 'integer', bigint: 'integer',
@@ -17,7 +17,7 @@ export function familyOf(c: ColumnInfo): Family {
   return FAMILIES[c.type] ?? 'unsupported';
 }
 
-type Opts = { ignoreCase: boolean; ignoreTrailingSpaces: boolean; nullEqualsBlank?: boolean };
+type Opts = { ignoreCase: boolean; ignoreTrailingSpaces: boolean; nullEqualsBlank?: boolean; ignoreDataTypes?: boolean };
 type PlanResult = { ok: true; norm: ColumnNorm } | { ok: false; reason: string };
 
 /** Precision and scale of an exact numeric column (money types have fixed values). */
@@ -43,9 +43,54 @@ function rankToPrecision(rank: number): DtPrecision {
   return rank as DtPrecision;
 }
 
+/** Types with no family of their own that can still be read as text when data types are ignored. */
+const TEXT_ONLY = new Set(['text', 'ntext', 'xml']);
+
+const isNumeric = (f: Family) => f === 'integer' || f === 'exactDecimal' || f === 'approxFloat';
+
+/** A column's shape when two numeric families meet: integers count as decimal(19,0). */
+function asDecimal(c: ColumnInfo): ColumnInfo {
+  return familyOf(c) === 'integer' ? { ...c, type: 'decimal', precision: 19, scale: 0 } : c;
+}
+
+/**
+ * Plan for two columns of different types when the user chose to ignore data types. Two numbers compare as
+ * numbers (integer with decimal as decimal, anything with float as float); everything else compares as text,
+ * each side rendered by its own type's canonical form.
+ */
+function planMixed(l: ColumnInfo, r: ColumnInfo, lf: Family, rf: Family, opts: Opts): PlanResult {
+  if (isNumeric(lf) && isNumeric(rf)) {
+    if (lf !== 'approxFloat' && rf !== 'approxFloat') {
+      const p = planColumnPair(asDecimal(l), asDecimal(r), { ...opts, ignoreDataTypes: false });
+      if (p.ok) return p;
+    }
+    const style = l.type === 'real' || r.type === 'real' ? 1 : 2;
+    return { ok: true, norm: { family: 'approxFloat', floatStyle: style, rtrim: false, upper: false } };
+  }
+  const own = (c: ColumnInfo, f: Family): ColumnNorm | undefined => {
+    if (f === 'unsupported') return TEXT_ONLY.has(c.type) ? { family: 'character', rtrim: false, upper: false } : undefined;
+    const p = planColumnPair(c, c, { ignoreCase: false, ignoreTrailingSpaces: false });
+    return p.ok ? p.norm : undefined;
+  };
+  const ln = own(l, lf);
+  const rn = own(r, rf);
+  if (!ln) return { ok: false, reason: `unsupported type ${l.type}` };
+  if (!rn) return { ok: false, reason: `unsupported type ${r.type}` };
+  const fixedChar = (c: ColumnInfo) => c.type === 'char' || c.type === 'nchar';
+  const norm: ColumnNorm = {
+    family: 'character',
+    rtrim: fixedChar(l) || fixedChar(r) || opts.ignoreTrailingSpaces,
+    upper: opts.ignoreCase,
+    perSide: { left: ln, right: rn },
+  };
+  if (opts.nullEqualsBlank) norm.blankAsNull = true;
+  return { ok: true, norm };
+}
+
 export function planColumnPair(l: ColumnInfo, r: ColumnInfo, opts: Opts): PlanResult {
   const lf = familyOf(l);
   const rf = familyOf(r);
+  if (opts.ignoreDataTypes && (lf !== rf || lf === 'unsupported')) return planMixed(l, r, lf, rf, opts);
   if (lf === 'unsupported') return { ok: false, reason: `unsupported type ${l.type}` };
   if (rf === 'unsupported') return { ok: false, reason: `unsupported type ${r.type}` };
   if (lf !== rf) return { ok: false, reason: `incompatible types ${l.type} vs ${r.type}` };
@@ -58,6 +103,8 @@ export function planColumnPair(l: ColumnInfo, r: ColumnInfo, opts: Opts): PlanRe
       const scale = Math.max(a.s, b.s);
       const intDigits = Math.max(a.p - a.s, b.p - b.s);
       if (intDigits + scale > 38) {
+        // Ignoring data types: fall back to comparing as float rather than skipping the column.
+        if (opts.ignoreDataTypes) return { ok: true, norm: { family: 'approxFloat', floatStyle: 2, rtrim: false, upper: false } };
         return { ok: false, reason: `decimal precision too large (${intDigits + scale} digits needed)` };
       }
       norm.decimalScale = scale;
@@ -85,8 +132,12 @@ export function planColumnPair(l: ColumnInfo, r: ColumnInfo, opts: Opts): PlanRe
   return { ok: true, norm };
 }
 
-export function normalizeExpr(colSql: string, norm: ColumnNorm): string {
-  const c = colSql;
+/**
+ * The normalized text of one side's column. Columns of different types (`norm.perSide`) are first rendered by
+ * their own type's normalization, then compared as text.
+ */
+export function normalizeExpr(colSql: string, norm: ColumnNorm, side: Side = 'left'): string {
+  const c = norm.perSide ? `(${normalizeExpr(colSql, norm.perSide[side])})` : colSql;
   switch (norm.family) {
     case 'integer':
       return `CONVERT(nvarchar(20), CAST(${c} AS bigint))`;

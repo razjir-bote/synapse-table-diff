@@ -323,6 +323,18 @@ describe('runComparison: hashing and values', () => {
     expect(res.rows[0]).toMatchObject({ kind: 'changed', key: ['1'], changedColumns: ['c250'] });
   });
 
+  it('mixed_t: different types are skipped by default, and the int/varchar key cannot be used', async () => {
+    await expect(runComparison(req('mixed_t', ['id']), deps())).rejects.toThrow(/incompatible types int vs varchar/);
+  });
+
+  it('mixed_t with ignoreDataTypes: compares every column across types; changed 2', async () => {
+    const res = await runComparison(req('mixed_t', ['id'], { ignoreDataTypes: true }), deps());
+    expect(res.plan.excluded).toEqual([]);
+    expect({ removed: res.removed, added: res.added, changed: res.changed }).toEqual({ removed: 0, added: 0, changed: 2 });
+    const byKey = Object.fromEntries(res.rows.map((r) => [r.key[0], [...r.changedColumns].sort()]));
+    expect(byKey).toEqual({ '2': ['a', 'b', 'c'], '3': ['d'] });
+  });
+
   it('types_t: exact display values; smalldatetime vs datetime2 rounds to the minute with no false differences', async () => {
     const res = await runComparison(req('types_t', ['id']), deps());
     expect(res.plan.excluded).toEqual([]);

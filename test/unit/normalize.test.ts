@@ -149,3 +149,38 @@ describe('nullEqualsBlank', () => {
     expect(norm(col('varchar'), col('varchar')).blankAsNull).toBeUndefined();
   });
 });
+
+describe('ignoreDataTypes', () => {
+  const ig = { ...opts, ignoreDataTypes: true };
+  it('still refuses different types without the option', () => {
+    expect(planColumnPair(col('int'), col('varchar'), opts)).toEqual({ ok: false, reason: 'incompatible types int vs varchar' });
+  });
+  it('compares integer with decimal as decimal', () => {
+    expect(norm(col('int'), col('decimal', { precision: 10, scale: 2 }), ig)).toEqual({ ...base, family: 'exactDecimal', decimalScale: 2 });
+  });
+  it('compares any number with float as float', () => {
+    expect(norm(col('bigint'), col('real'), ig)).toEqual({ ...base, family: 'approxFloat', floatStyle: 1 });
+    expect(norm(col('decimal', { precision: 38, scale: 0 }), col('decimal', { precision: 38, scale: 10 }), ig).family).toBe('approxFloat');
+  });
+  it('falls back to float when the decimal would need more than 38 digits', () => {
+    expect(norm(col('bigint'), col('decimal', { precision: 38, scale: 30 }), ig).family).toBe('approxFloat');
+  });
+  it('compares other mixes as text, each side in its own canonical form', () => {
+    const n = norm(col('int'), col('varchar'), ig);
+    expect(n.family).toBe('character');
+    expect(normalizeExpr('[c]', n, 'left')).toBe('CAST((CONVERT(nvarchar(20), CAST([c] AS bigint))) AS nvarchar(max))');
+    expect(normalizeExpr('[c]', n, 'right')).toBe('CAST((CAST([c] AS nvarchar(max))) AS nvarchar(max))');
+  });
+  it('applies text options to the mixed comparison', () => {
+    const n = norm(col('date'), col('char'), { ignoreCase: true, ignoreTrailingSpaces: false, nullEqualsBlank: true, ignoreDataTypes: true });
+    expect(n).toMatchObject({ rtrim: true, upper: true, blankAsNull: true });
+  });
+  it('reads xml, text and ntext as text; other unsupported types stay excluded', () => {
+    expect(norm(col('xml'), col('nvarchar'), ig).family).toBe('character');
+    expect(norm(col('ntext'), col('ntext'), ig).family).toBe('character');
+    expect(planColumnPair(col('geography'), col('nvarchar'), ig)).toEqual({ ok: false, reason: 'unsupported type geography' });
+  });
+  it('leaves same-type columns unchanged', () => {
+    expect(norm(col('int'), col('bigint'), ig)).toEqual(norm(col('int'), col('bigint')));
+  });
+});

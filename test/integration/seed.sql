@@ -190,6 +190,26 @@ INSERT INTO dbo.types_t (id, d, dt2, dd, tt, dto, sdt, marker) VALUES
   (5, 1, NULL, NULL, NULL, NULL, '2020-01-01T23:59:59', 0);
 GO
 
+---------------------------------------------------------------------------- mixed_t
+-- Same column names, different types on each side (for "ignore data types"). The key is int on the left and
+-- varchar on the right. Row 1 is equal as values; row 2 differs in a, b, c; row 3 differs in d (text form).
+USE tablediff_a;
+GO
+CREATE TABLE dbo.mixed_t (id int NOT NULL, a int NULL, b decimal(10,2) NULL, c varchar(10) NULL, d date NULL, x xml NULL);
+INSERT INTO dbo.mixed_t (id, a, b, c, d, x) VALUES
+  (1, 5, 5.00, '7', '2020-01-02', '<a/>'),
+  (2, 6, 1.50, 'x', '2020-01-02', '<a/>'),
+  (3, 5, 5.00, '7', '2020-01-03', '<a/>');
+GO
+USE tablediff_b;
+GO
+CREATE TABLE dbo.mixed_t (id varchar(10) NOT NULL, a varchar(10) NULL, b int NULL, c int NULL, d varchar(10) NULL, x nvarchar(max) NULL);
+INSERT INTO dbo.mixed_t (id, a, b, c, d, x) VALUES
+  ('1', '5', 5, 7, '2020-01-02', N'<a/>'),
+  ('2', '7', 1, 0, '2020-01-02', N'<a/>'),
+  ('3', '5', 5, 7, '03/01/2020', N'<a/>');
+GO
+
 ---------------------------------------------------------------------------- big
 USE tablediff_a;
 GO

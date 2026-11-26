@@ -20,6 +20,7 @@ export interface SetupState {
   ignoreCase: boolean;
   ignoreTrailingSpaces: boolean;
   nullEqualsBlank: boolean;
+  ignoreDataTypes: boolean;
   error?: string;
   /** Keys/exclusions from a pre-filled request, applied once both sides are described. */
   pendingInitial?: { keys: string[]; excluded: string[] };
@@ -34,6 +35,7 @@ export interface SetupActions {
   onIgnoreCase(on: boolean): void;
   onIgnoreTrailing(on: boolean): void;
   onNullEqualsBlank(on: boolean): void;
+  onIgnoreDataTypes(on: boolean): void;
   /** true: exclude every shared non-key column; false: exclude none. */
   onExcludeAll(on: boolean): void;
   onRun(): void;
@@ -196,6 +198,7 @@ const NO_ACTIONS: SetupActions = {
   onIgnoreCase: noop,
   onIgnoreTrailing: noop,
   onNullEqualsBlank: noop,
+  onIgnoreDataTypes: noop,
   onExcludeAll: noop,
   onRun: noop,
 };
@@ -242,6 +245,7 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
     ['ignoreCase', 'Ignore case', state.ignoreCase, actions.onIgnoreCase],
     ['ignoreTrailing', 'Ignore trailing spaces', state.ignoreTrailingSpaces, actions.onIgnoreTrailing],
     ['nullEqualsBlank', 'Treat NULL and blank text as the same', state.nullEqualsBlank, actions.onNullEqualsBlank],
+    ['ignoreDataTypes', 'Ignore data types (compare columns whose types differ instead of skipping them)', state.ignoreDataTypes, actions.onIgnoreDataTypes],
   ];
   for (const [role, text, on, cb] of optDefs) {
     const label = el('label', 'check');

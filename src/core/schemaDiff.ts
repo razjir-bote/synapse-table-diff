@@ -26,7 +26,11 @@ export function diffSchema(
   const sharedNames = new Set(right.map((c) => c.name.toLowerCase()).filter((n) => leftNames.has(n)));
   const L = index(left, sharedNames);
   const R = index(right, sharedNames);
-  const opts = { ignoreCase: req.ignoreCase, ignoreTrailingSpaces: req.ignoreTrailingSpaces };
+  const opts = {
+    ignoreCase: req.ignoreCase,
+    ignoreTrailingSpaces: req.ignoreTrailingSpaces,
+    ignoreDataTypes: req.ignoreDataTypes === true,
+  };
   // NULL = blank applies to compared columns only: a blank key must stay a real key, not become a NULL key.
   const comparedOpts = { ...opts, nullEqualsBlank: req.nullEqualsBlank === true };
 

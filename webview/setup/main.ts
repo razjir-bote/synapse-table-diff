@@ -17,6 +17,7 @@ let state: SetupState = {
   ignoreCase: false,
   ignoreTrailingSpaces: false,
   nullEqualsBlank: false,
+  ignoreDataTypes: false,
 };
 const lc = (s: string) => s.toLowerCase();
 const post = (m: SetupToHost) => vscode.postMessage(m);
@@ -79,6 +80,9 @@ const actions: SetupActions = {
   onNullEqualsBlank(on) {
     state.nullEqualsBlank = on;
   },
+  onIgnoreDataTypes(on) {
+    state.ignoreDataTypes = on;
+  },
   onExcludeAll(on) {
     state.excludedColumns = excludeAllColumns(state, on);
     draw();
@@ -96,6 +100,7 @@ const actions: SetupActions = {
       ignoreCase: state.ignoreCase,
       ignoreTrailingSpaces: state.ignoreTrailingSpaces,
       nullEqualsBlank: state.nullEqualsBlank,
+      ignoreDataTypes: state.ignoreDataTypes,
     };
     post({ type: 'run', request });
   },
@@ -116,6 +121,7 @@ function init(profiles: { id: string; name: string }[], initial?: CompareRequest
     ignoreCase: initial.ignoreCase,
     ignoreTrailingSpaces: initial.ignoreTrailingSpaces,
     nullEqualsBlank: initial.nullEqualsBlank === true,
+    ignoreDataTypes: initial.ignoreDataTypes === true,
   };
   state.pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
   for (const side of ['left', 'right'] as Side[]) {

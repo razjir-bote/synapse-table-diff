@@ -91,7 +91,7 @@ export function needsMaxStart(cols: ColumnPairPlan[]): boolean {
 
 function hashOf(cols: ColumnPairPlan[], side: Side): string {
   if (cols.length === 0) return "HASHBYTES('SHA2_256', N'')";
-  const segs = cols.map((c) => segment(normalizeExpr(rawCol(c, side), c.norm)));
+  const segs = cols.map((c) => segment(normalizeExpr(rawCol(c, side), c.norm, side)));
   if (needsMaxStart(cols)) segs.unshift(MAX_START);
   return `HASHBYTES('SHA2_256', ${segs.join(' + ')})`;
 }
@@ -207,7 +207,7 @@ export function detailQuery(
   const extra = [
     ...plan.keys.map((k, i) => `${displayExpr(rawCol(k, side), sideCol(k, side))} AS k_${i}`),
     ...plan.compared.map((c, i) => `${displayExpr(rawCol(c, side), sideCol(c, side))} AS v_${i}`),
-    ...plan.compared.map((c, i) => `${normalizeExpr(rawCol(c, side), c.norm)} AS n_${i}`),
+    ...plan.compared.map((c, i) => `${normalizeExpr(rawCol(c, side), c.norm, side)} AS n_${i}`),
   ];
   const { from, where } = hashedTable(plan, side, t, filter, extra, within);
   const cols = [
