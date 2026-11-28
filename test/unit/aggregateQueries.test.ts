@@ -17,7 +17,7 @@ function req(aggregate: AggregateSpec, o: Partial<CompareRequest> = {}): Compare
   };
 }
 const left = [
-  col('region', 'varchar', { maxLength: 10 }), col('amount', 'int'), col("it's", 'varchar', { maxLength: 10 }),
+  col('region', 'varchar', { maxLength: 10 }), col('amount', 'decimal', { precision: 10, scale: 2 }), col('qty', 'int'), col("it's", 'varchar', { maxLength: 10 }),
   col('cust', 'varchar', { maxLength: 20 }), col('d', 'float'),
 ];
 const right = [
@@ -39,9 +39,16 @@ describe('aggregateQuery', () => {
     expect(aggregateQuery(plan, 'right', ref, undefined)).toBe(
       `SELECT (${G}) ${B} AS g_0, CAST(COUNT_BIG(*) AS varchar(20)) AS rc, ` +
       `CAST(SUM(CAST([amt] AS decimal(38,4))) AS varchar(45)) AS m_0_sum, ` +
-      `CAST(COUNT_BIG([amt]) AS varchar(20)) AS m_0_count\n` +
+      `CAST(COUNT_BIG(${normalizeExpr('[amt]', plan.measures[0].norm!, 'right')}) AS varchar(20)) AS m_0_count\n` +
       `FROM [s].[t]\nGROUP BY (${G}) ${B}, DATALENGTH(${G})`,
     );
+  });
+
+  it('int vs decimal count falls back to the raw column', () => {
+    const p = planAggregate(left, right, req({ groupBy: [], measures: [{ left: 'qty', right: 'amt', aggs: ['count'] }] }));
+    const q = aggregateQuery(p, 'right', ref, undefined);
+    expect(q).toContain('CAST(COUNT_BIG([amt]) AS varchar(20)) AS m_0_count');
+    assertAllowedSql(q);
   });
 
   it('left side uses left names and filter', () => {
