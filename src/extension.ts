@@ -84,21 +84,26 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const chosen = await vscode.window.showQuickPick(list, { placeHolder });
       return chosen?.value;
     },
-    query: async (side, sql) => {
+    query: async (side, sql, signal) => {
       // An empty database means the profile's own default.
       const database = side.database || store.get(side.profileId)?.database || '';
       const runner = await (await connect({ profileId: side.profileId, database }, limits().queryTimeoutSeconds)).open();
       try {
-        return await runner.query(sql);
+        return await runner.query(sql, signal);
       } finally {
         await runner.close();
       }
     },
-    lastChoice: () => ctx.globalState.get<{ left: SchemaSide; right: SchemaSide }>(SCHEMA_LAST_KEY),
+    lastChoice: () => ctx.globalState.get<{ left: SchemaSide; right: SchemaSide; rowCounts?: boolean }>(SCHEMA_LAST_KEY),
     saveChoice: async (c) => { await ctx.globalState.update(SCHEMA_LAST_KEY, c); },
     withProgress: (title, task) =>
       Promise.resolve(vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title }, (p) => task((message) => p.report({ message })))),
+        { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+        (p, token) => {
+          const ac = new AbortController();
+          token.onCancellationRequested(() => ac.abort());
+          return task((message) => p.report({ message }), ac.signal);
+        })),
     saveDialog: async (name) => {
       const dir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
       const target = await vscode.window.showSaveDialog({

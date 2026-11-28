@@ -106,7 +106,12 @@ export function diffSchemas(left: SchemaObject[], right: SchemaObject[]): Findin
       out.push({ issue: 'extra_table', table: r.name, column: '', leftType: '', rightType: '', details: `${r.kind} on the right; not on the left` });
     }
   }
-  return out.sort(
+  return sortFindings(out);
+}
+
+/** Report order: table, then issue kind, then column. Sorts in place and returns the array. */
+export function sortFindings(findings: Finding[]): Finding[] {
+  return findings.sort(
     (a, b) => cmp(a.table, b.table) || ISSUE_ORDER.indexOf(a.issue) - ISSUE_ORDER.indexOf(b.issue) || cmp(a.column, b.column),
   );
 }
