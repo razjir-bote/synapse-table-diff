@@ -239,6 +239,10 @@ CREATE TABLE cmp_l.t2 (id int);
 GO
 CREATE VIEW cmp_l.v1 AS SELECT id FROM cmp_l.t1;
 GO
+INSERT INTO cmp_l.t1 (id) VALUES (1), (2), (3);
+GO
+CREATE VIEW cmp_l.v2 AS SELECT id FROM cmp_l.t1;
+GO
 USE tablediff_b;
 GO
 CREATE SCHEMA cmp_r;
@@ -247,6 +251,14 @@ CREATE TABLE cmp_r.T1 (id int, name nvarchar(50), amt decimal(18,4), extra int);
 CREATE TABLE cmp_r.t3 (id int);
 GO
 CREATE VIEW cmp_r.v1 AS SELECT id FROM cmp_r.T1;
+GO
+INSERT INTO cmp_r.T1 (id) VALUES (1), (2);
+GO
+CREATE TABLE cmp_r.gone (id int);
+GO
+CREATE VIEW cmp_r.v2 AS SELECT id FROM cmp_r.gone;
+GO
+DROP TABLE cmp_r.gone;
 GO
 USE master;
 GO
