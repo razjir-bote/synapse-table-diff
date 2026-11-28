@@ -24,7 +24,7 @@ export function listObjectsQuery(): string {
   ].join('\n');
 }
 
-/** Schemas holding at least one table, view or external table. */
+/** User schemas (including empty ones), excluding sys, INFORMATION_SCHEMA, guest and the db_* role schemas. */
 export function listSchemasQuery(): string {
   return [
     'SELECT s.name AS name',
