@@ -136,8 +136,7 @@ const actions: SetupActions = {
     draw();
   },
   onSumTolerance(text) {
-    state.sumTolerance = text;
-    draw();
+    state.sumTolerance = text; // render refreshes the Run button itself; redrawing would drop input focus
   },
   onSameFilter(on) {
     state.sameFilter = on;

@@ -279,6 +279,30 @@ describe('aggregate mode render', () => {
   });
 });
 
+describe('sum tolerance input', () => {
+  it('keeps the same element and refreshes Run on input', () => {
+    const s = state({ mode: 'aggregate', measures: [{ left: 'Id', right: 'id', aggs: ['count'] }] });
+    const root = document.createElement('div');
+    const noop = () => undefined;
+    const actions = {
+      onProfile: noop, onDatabase: noop, onTable: noop, onToggleKey: noop, onToggleExclude: noop,
+      onFilter: noop, onIgnoreCase: noop, onIgnoreTrailing: noop, onNullEqualsBlank: noop, onIgnoreDataTypes: noop,
+      onExcludeAll: noop, onRun: noop, onMode: noop, onAddGroup: noop, onGroup: noop, onRemoveGroup: noop,
+      onAddMeasure: noop, onMeasure: noop, onMeasureAgg: noop, onRemoveMeasure: noop, onSameFilter: noop, onRightFilter: noop,
+      onSumTolerance: (t: string) => { s.sumTolerance = t; },
+    };
+    renderSetup(root, s, actions);
+    const input = root.querySelector('[data-role="sum-tolerance"]') as HTMLInputElement;
+    const run = root.querySelector('[data-role="run"]') as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    input.value = 'abc';
+    input.dispatchEvent(new Event('input'));
+    expect(root.querySelector('[data-role="sum-tolerance"]')).toBe(input);
+    expect(run.disabled).toBe(true);
+    expect(root.querySelector('[data-role="reason"]')!.textContent).toMatch(/tolerance/i);
+  });
+});
+
 describe('aggregate reducer', () => {
   it('restores a pending aggregate spec', () => {
     const s = state({ mode: 'aggregate' });

@@ -270,7 +270,7 @@ function smallButton(role: string, text: string, index: number | undefined, onCl
   return b;
 }
 
-function renderAggregate(state: SetupState, a: SetupActions): HTMLElement {
+function renderAggregate(state: SetupState, a: SetupActions, root: HTMLElement): HTMLElement {
   const box = el('div', 'aggregate');
 
   const groups = el('fieldset', 'cols');
@@ -315,7 +315,10 @@ function renderAggregate(state: SetupState, a: SetupActions): HTMLElement {
   ti.type = 'text';
   ti.dataset.role = 'sum-tolerance';
   ti.value = state.sumTolerance;
-  ti.addEventListener('input', () => a.onSumTolerance(ti.value));
+  ti.addEventListener('input', () => {
+    a.onSumTolerance(ti.value);
+    refreshRun(root, state); // no re-render: the input must keep focus
+  });
   tol.appendChild(ti);
   box.appendChild(tol);
 
@@ -375,7 +378,7 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   }
 
   if (state.mode === 'aggregate') {
-    root.appendChild(renderAggregate(state, actions));
+    root.appendChild(renderAggregate(state, actions, root));
     appendTail(root, state, actions);
     return;
   }
@@ -402,6 +405,15 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   fl.appendChild(ta);
   root.appendChild(fl);
   appendTail(root, state, actions);
+}
+
+/** Updates just the Run button and reason text from the current state. */
+function refreshRun(root: HTMLElement, state: SetupState): void {
+  const verdict = canRun(state);
+  const run = root.querySelector<HTMLButtonElement>('[data-role="run"]');
+  const reason = root.querySelector<HTMLElement>('[data-role="reason"]');
+  if (run) run.disabled = !verdict.ok;
+  if (reason) reason.textContent = verdict.ok ? '' : verdict.reason ?? '';
 }
 
 function appendTail(root: HTMLElement, state: SetupState, actions: SetupActions): void {
