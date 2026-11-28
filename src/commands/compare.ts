@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { SideConnector } from '../db/runner';
 import type { PipelineDeps } from '../core/pipeline';
 import { CompareCancelledError, ComparePlanError, PausedPoolError, PoolUnavailableError } from '../core/errors';
-import type { CompareRequest, CompareResult, Limits, Side, Stage, TableRef } from '../core/types';
+import type { AggregateResult, CompareRequest, CompareResult, Limits, Side, Stage, TableRef } from '../core/types';
 import { DEFAULT_LIMITS } from '../core/types';
 
 export const STAGE_MESSAGES: Record<Stage, string> = {
@@ -35,8 +35,9 @@ export interface CompareEnv {
   getLimits(): Limits;
   connect(ref: TableRef, timeoutSeconds: number): Promise<SideConnector>;
   runComparison(req: CompareRequest, deps: PipelineDeps): Promise<CompareResult>;
+  runAggregateComparison(req: CompareRequest, deps: PipelineDeps): Promise<AggregateResult>;
   addRecent(req: CompareRequest): Promise<void>;
-  showResults(result: CompareResult): void;
+  showResults(result: CompareResult | AggregateResult): void;
 }
 
 /** Bounds of each setting, as declared in package.json (VS Code does not enforce them on settings.json). */
@@ -73,9 +74,17 @@ export function elapsed(ms: number): string {
 }
 
 /** One-line summary shown when a comparison finishes. */
-export function doneMessage(r: CompareResult): string {
+export function doneMessage(r: CompareResult | AggregateResult): string {
   const n = (x: number) => x.toLocaleString('en-US');
   const time = `in ${elapsed(r.durationMs)}`;
+  if (r.mode === 'aggregate') {
+    const warn = r.warnings.length > 0 ? ' See the warnings in the results.' : '';
+    const differ = r.changed + r.added + r.removed;
+    if (differ === 0) return `Table Diff finished ${time}: all ${n(r.leftGroups)} groups match.${warn}`;
+    return `Table Diff finished ${time}: ${n(differ)} groups differ, ` +
+      `${n(r.removed)} only on left, ${n(r.added)} only on right ` +
+      `(${n(r.leftGroups)} vs ${n(r.rightGroups)} groups).${warn}`;
+  }
   const rows = `${n(r.leftRows)} vs ${n(r.rightRows)} rows`;
   const schema = r.schema.differenceCount > 0 ? `, ${n(r.schema.differenceCount)} column differences` : '';
   const warn = r.warnings.length > 0 ? ' See the warnings in the results.' : '';
@@ -111,15 +120,19 @@ export async function runFromRequest(req: CompareRequest, env: CompareEnv): Prom
           ]);
           current = `Connected to ${left.label} (${left.poolType}) and ${right.label} (${right.poolType}).`;
           show();
-          return await env.runComparison(req, {
+          const base = {
             left,
             right,
             limits,
             signal: abort.signal,
-            onProgress: (stage, detail) => {
+            onProgress: (stage: Stage, detail?: string) => {
               current = detail ?? STAGE_MESSAGES[stage];
               show();
             },
+          };
+          if (req.mode === 'aggregate') return await env.runAggregateComparison(req, base);
+          return await env.runComparison(req, {
+            ...base,
             confirmExtraScan: async (_sides: Side[]) =>
               (await env.showWarningMessage(SERVERLESS_PROMPT, { modal: true }, 'Continue')) === 'Continue',
           });

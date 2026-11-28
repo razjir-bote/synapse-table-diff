@@ -8,13 +8,15 @@ import { registerConnectionCommands, removeConnection } from './profiles/connect
 import { registerSidebar } from './ui/sidebar';
 import { entraTokenProvider, makeConnector } from './db/auth';
 import { runComparison } from './core/pipeline';
-import type { CompareRequest, CompareResult, TableRef } from './core/types';
+import { runAggregateComparison } from './core/aggregatePipeline';
+import type { AggregateResult, CompareRequest, CompareResult, TableRef } from './core/types';
 import { readLimits, recentLabel, runFromRequest, type CompareEnv } from './commands/compare';
 import { SetupPanel, type SetupDeps } from './ui/setupPanel';
 import { ResultsPanel } from './ui/resultsPanel';
 import { DiffDocumentProvider, diffTitle } from './ui/diffDocument';
 import { runSchemaCompare, type SchemaCompareEnv, type SchemaSide } from './commands/compareSchemas';
 import { exportMessage, writeCsv } from './export/csv';
+import { aggregateExportMessage, writeAggregateCsv } from './export/aggregateCsv';
 
 export function activate(ctx: vscode.ExtensionContext): void {
   const store = new ProfileStore(ctx.globalState, ctx.secrets);
@@ -48,6 +50,20 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }
   };
 
+  const exportAggregateCsv = async (result: AggregateResult) => {
+    const target = await vscode.window.showSaveDialog({
+      defaultUri: vscode.Uri.file('aggregate-diff.csv'),
+      filters: { CSV: ['csv'] },
+    });
+    if (!target) return;
+    try {
+      await writeAggregateCsv(result, fs.createWriteStream(target.fsPath));
+      void vscode.window.showInformationMessage(aggregateExportMessage(result));
+    } catch (err) {
+      void vscode.window.showErrorMessage(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const connect = async (ref: Pick<TableRef, 'profileId' | 'database'>, timeoutSeconds: number) => {
     const profile = store.get(ref.profileId);
     if (!profile) throw new Error('Connection profile not found. It may have been removed.');
@@ -62,8 +78,17 @@ export function activate(ctx: vscode.ExtensionContext): void {
     getLimits: limits,
     connect,
     runComparison,
+    runAggregateComparison,
     addRecent: (r) => recent.add(r),
     showResults: (result) => {
+      if (result.mode === 'aggregate') {
+        ResultsPanel.show(ctx, result, {
+          openDiff: () => {},
+          exportCsv: () => void exportAggregateCsv(result),
+          onDispose: () => {},
+        });
+        return;
+      }
       // One diff-document run per result, released when its results panel closes.
       const runId = provider.add(result);
       ResultsPanel.show(ctx, result, {
