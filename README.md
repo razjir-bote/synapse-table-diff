@@ -140,6 +140,25 @@ Use **Export CSV** to save the differences. The export is streamed to disk. Valu
 formula (starting with `=`, `+`, `-`, `@` or a tab, other than plain numbers such as `-5`) are written with a
 leading `'`, so opening the file in Excel cannot run them.
 
+## Compare schemas
+
+**Table Diff: Compare Schemas…** (also a button in the Connections view) checks that one schema has the same tables and columns as another, for example a dev database against a production one. Pick a connection, database and schema for the left side (the schema to check), then the same for the right side (the schema it should match). The last picks are remembered and listed first next time.
+
+Both sides are read in parallel, and the result is saved as a CSV report that opens when it is done. The columns are `issue,table,column,left_type,right_type,details,status`; `status` is left empty for you to fill in.
+
+Issue types:
+
+- `missing_table`: the table is on the right but not on the left.
+- `extra_table`: the table is on the left but not on the right.
+- `missing_column`: the column is on the right but not on the left.
+- `extra_column`: the column is on the left but not on the right.
+- `type_mismatch`: the column has a different base type (for example `int` and `bigint`).
+- `size_mismatch`: the base type is the same but the length, precision or scale differs (for example `varchar(50)` and `varchar(100)`).
+
+Matching rules: table and column names match case-insensitively, and a table, view or external table matches any of the three kinds. Rows are sorted by table, then issue, then column.
+
+On serverless pools, external tables often report string columns as `varchar(8000)` or `varchar(max)` where the source defines a shorter length. Expect `size_mismatch` rows for those; they usually reflect how the serverless pool infers types, not a real difference in the data.
+
 ## Settings
 
 All settings are under `tableDiff.*` and are read at the start of each run.

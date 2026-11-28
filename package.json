@@ -18,6 +18,12 @@
         "icon": "$(diff)"
       },
       {
+        "command": "tableDiff.compareSchemas",
+        "title": "Compare Schemas…",
+        "category": "Table Diff",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "tableDiff.addConnection",
         "title": "Table Diff: Add Connection",
         "icon": "$(add)"
@@ -101,7 +107,7 @@
     "viewsWelcome": [
       {
         "view": "tableDiff.connections",
-        "contents": "No connections yet. Add a SQL Server or Synapse connection to get started.\n[Add Connection](command:tableDiff.addConnection)\n[New Comparison](command:tableDiff.compare)"
+        "contents": "No connections yet. Add a SQL Server or Synapse connection to get started.\n[Add Connection](command:tableDiff.addConnection)\n[New Comparison](command:tableDiff.compare)\n[Compare Schemas](command:tableDiff.compareSchemas)"
       },
       {
         "view": "tableDiff.recent",
@@ -119,6 +125,11 @@
           "command": "tableDiff.addConnection",
           "when": "view == tableDiff.connections",
           "group": "navigation@2"
+        },
+        {
+          "command": "tableDiff.compareSchemas",
+          "when": "view == tableDiff.connections",
+          "group": "navigation@3"
         },
         {
           "command": "tableDiff.compare",
