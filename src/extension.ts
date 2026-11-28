@@ -7,6 +7,7 @@ import { RecentStore } from './profiles/recentStore';
 import { registerConnectionCommands, removeConnection } from './profiles/connectionCommands';
 import { registerSidebar } from './ui/sidebar';
 import { entraTokenProvider, makeConnector } from './db/auth';
+import type { QueryRunner } from './db/runner';
 import { runComparison } from './core/pipeline';
 import type { CompareRequest, CompareResult, TableRef } from './core/types';
 import { readLimits, recentLabel, runFromRequest, type CompareEnv } from './commands/compare';
@@ -93,6 +94,28 @@ export function activate(ctx: vscode.ExtensionContext): void {
       } finally {
         await runner.close();
       }
+    },
+    session: async (side) => {
+      const database = side.database || store.get(side.profileId)?.database || '';
+      const connector = await connect({ profileId: side.profileId, database }, limits().queryTimeoutSeconds);
+      const idle: QueryRunner[] = [];
+      return {
+        query: async <T,>(sql: string, signal?: AbortSignal) => {
+          const runner = idle.pop() ?? await connector.open();
+          try {
+            const rows = await runner.query<T>(sql, signal);
+            idle.push(runner);
+            return rows;
+          } catch (err) {
+            // It may be mid-cancel; never reuse it.
+            try { await runner.close(); } catch { /* ignore */ }
+            throw err;
+          }
+        },
+        close: async () => {
+          await Promise.all(idle.splice(0).map((r) => r.close().catch(() => { /* ignore */ })));
+        },
+      };
     },
     lastChoice: () => ctx.globalState.get<{ left: SchemaSide; right: SchemaSide; rowCounts?: boolean }>(SCHEMA_LAST_KEY),
     saveChoice: async (c) => { await ctx.globalState.update(SCHEMA_LAST_KEY, c); },

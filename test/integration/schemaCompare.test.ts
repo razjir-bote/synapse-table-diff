@@ -56,6 +56,7 @@ describe('schema compare metadata queries', () => {
         ).then((r) => r[0].cnt),
       { limit: 4 },
     );
+    expect(results.find((r) => r.table === 't4')).toEqual({ table: 't4', left: 2n, right: 2n });
     const findings = rowCountFindings(results);
     expect(findings.map((f) => [f.table, f.issue])).toEqual([
       ['t1', 'row_count_mismatch'],

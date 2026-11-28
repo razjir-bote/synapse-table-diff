@@ -23,7 +23,6 @@ describe('countMatchedTables', () => {
     const count = async (side: 'left' | 'right', name: string) => {
       if (side === 'left') { inFlight++; max = Math.max(max, inFlight); }
       await tick();
-      if (side === 'right') { /* released after both sides */ }
       pending.set(name, (pending.get(name) ?? 0) + 1);
       if (pending.get(name) === 2) inFlight--;
       return side === 'left' ? 1 : 2;

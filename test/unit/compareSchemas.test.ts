@@ -18,6 +18,7 @@ function makeEnv(over: Partial<SchemaCompareEnv> & { answers?: (string | undefin
   const opened: string[] = [];
   const infos: { message: string; items: string[] }[] = [];
   const errors: string[] = [];
+  const closes: string[] = [];
   const progress: string[] = [];
   const saved: { left: SchemaSide; right: SchemaSide; rowCounts?: boolean }[] = [];
   const dialogs: string[] = [];
@@ -42,6 +43,10 @@ function makeEnv(over: Partial<SchemaCompareEnv> & { answers?: (string | undefin
       if (sql === schemaColumnsQuery('sR')) return (rows.R ?? [col('t1', 'a', 'bigint')]) as T[];
       return [{ name: 'x' }, { name: 'y' }] as T[];
     },
+    session: async (side) => ({
+      query: <T,>(sql: string, signal?: AbortSignal) => env.query<T>(side, sql, signal),
+      close: async () => { closes.push(side.database); },
+    }),
     lastChoice: () => undefined,
     saveChoice: async (c) => { saved.push(c); },
     withProgress: async (_t, task) => task((m) => progress.push(m), new AbortController().signal),
@@ -52,7 +57,7 @@ function makeEnv(over: Partial<SchemaCompareEnv> & { answers?: (string | undefin
     error: (m) => { errors.push(m); },
     ...over,
   };
-  return { env, countQueries, calls, picks, queries, written, opened, infos, errors, progress, saved, dialogs };
+  return { env, closes, countQueries, calls, picks, queries, written, opened, infos, errors, progress, saved, dialogs };
 }
 
 const now = () => new Date(2026, 10, 28, 9, 5);
@@ -226,24 +231,75 @@ describe('runSchemaCompare', () => {
 
   it('cancel during counting abandons the run', async () => {
     const ac = new AbortController();
+    const names = Array.from({ length: 10 }, (_, i) => `t${i}`);
     const t = makeEnv({
       answers: withCounts,
-      rows: { L: [col('t1', 'a'), col('t2', 'a')], R: [col('t1', 'a'), col('t2', 'a')] },
-      counts: { 'dbL:t1': 1, 'dbR:t1': 1, 'dbL:t2': 1, 'dbR:t2': 1 },
+      rows: { L: names.map((n) => col(n, 'a')), R: names.map((n) => col(n, 'a')) },
       withProgress: async (_t: string, task: (r: (m: string) => void, s: AbortSignal) => Promise<unknown>) =>
         task(() => {}, ac.signal) as never,
     });
     const base = t.env.query;
-    let counted = 0;
+    const started: string[] = [];
     t.env.query = (async (side: { profileId: string; database: string }, sql: string, signal?: AbortSignal) => {
-      if (sql.includes('COUNT_BIG')) { counted++; ac.abort(); throw new Error('cancelled'); }
+      if (sql.includes('COUNT_BIG')) { started.push(`${side.database}:${sql}`); ac.abort(); throw new Error('cancelled'); }
       return base(side, sql, signal);
     }) as SchemaCompareEnv['query'];
     await runSchemaCompare(t.env, now);
+    expect(started).toHaveLength(2);
+    expect(started.every((q) => q.endsWith('[t0]'))).toBe(true);
+    expect(started.map((q) => q.split(':')[0]).sort()).toEqual(['dbL', 'dbR']);
     expect(t.dialogs).toEqual([]);
     expect(t.infos).toEqual([]);
     expect(t.errors).toEqual([]);
     expect(t.written).toEqual([]);
-    expect(counted).toBeLessThanOrEqual(4);
+    expect(t.closes.sort()).toEqual(['dbL', 'dbR']);
+  });
+
+  it('closes both sessions after a counting run', async () => {
+    const t = makeEnv({ answers: withCounts, counts: { 'dbL:t1': 1, 'dbR:t1': 1 } });
+    await runSchemaCompare(t.env, now);
+    expect(t.countQueries).toHaveLength(2);
+    expect(t.closes.sort()).toEqual(['dbL', 'dbR']);
+  });
+
+  it('does not open sessions for structure only', async () => {
+    const t = makeEnv({ session: async () => { throw new Error('no session'); } });
+    await runSchemaCompare(t.env, now);
+    expect(t.errors).toEqual([]);
+  });
+
+  it('a cancel that lands after counting never reaches the dialog, even if writing would fail', async () => {
+    const ac = new AbortController();
+    const t = makeEnv({
+      answers: withCounts,
+      counts: { 'dbL:t1': 1, 'dbR:t1': 1 },
+      withProgress: async (_t: string, task: (r: (m: string) => void, s: AbortSignal) => Promise<unknown>) =>
+        task(() => {}, ac.signal) as never,
+      writeFile: async () => { throw new Error('disk full'); },
+    });
+    const base = t.env.query;
+    t.env.query = (async (side: { profileId: string; database: string }, sql: string, signal?: AbortSignal) => {
+      const r = await base(side, sql, signal);
+      if (sql.includes('COUNT_BIG')) ac.abort();
+      return r;
+    }) as SchemaCompareEnv['query'];
+    await runSchemaCompare(t.env, now);
+    expect(t.dialogs).toEqual([]);
+    expect(t.errors).toEqual([]);
+    expect(t.infos).toEqual([]);
+  });
+
+  it('a failure after the progress finished is still reported even if the signal was aborted', async () => {
+    const ac = new AbortController();
+    const t = makeEnv({
+      withProgress: async (_t: string, task: (r: (m: string) => void, s: AbortSignal) => Promise<unknown>) => {
+        const out = await task(() => {}, ac.signal);
+        ac.abort();
+        return out as never;
+      },
+      writeFile: async () => { throw new Error('disk full'); },
+    });
+    await runSchemaCompare(t.env, now);
+    expect(t.errors).toEqual(['Schema compare failed: disk full']);
   });
 });

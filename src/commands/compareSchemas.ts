@@ -8,12 +8,19 @@ import { CompareCancelledError } from '../core/errors';
 
 export interface SchemaSide { profileId: string; database: string; schema: string }
 
+export interface SideSession {
+  query<T>(sql: string, signal?: AbortSignal): Promise<T[]>;
+  close(): Promise<void>;
+}
+
 export interface SchemaCompareEnv {
   profiles(): { id: string; name: string }[];
   /** Returns the picked value; the preferred item is listed first. */
   pick(items: string[] | { label: string; value: string; description?: string }[], placeHolder: string, preferred?: string): Promise<string | undefined>;
   /** Opens a connection, runs the query and closes it. */
   query<T>(side: { profileId: string; database: string }, sql: string, signal?: AbortSignal): Promise<T[]>;
+  /** Reuses connections across many queries on one side; close() releases them. */
+  session(side: { profileId: string; database: string }): Promise<SideSession>;
   lastChoice(): { left: SchemaSide; right: SchemaSide; rowCounts?: boolean } | undefined;
   saveChoice(c: { left: SchemaSide; right: SchemaSide; rowCounts?: boolean }): Promise<void>;
   withProgress<T>(title: string, task: (report: (message: string) => void, signal: AbortSignal) => Promise<T>): Promise<T>;
@@ -70,6 +77,7 @@ export async function runSchemaCompare(
     return;
   }
   let cancelSignal: AbortSignal | undefined;
+  let progressDone = false;
   try {
     const last = env.lastChoice();
     const left = await pickSide(env, LEFT, last?.left);
@@ -92,21 +100,35 @@ export async function runSchemaCompare(
       const lObjs = groupSchemaRows(l);
       const rObjs = groupSchemaRows(r);
       const found = diffSchemas(lObjs, rObjs);
-      if (!rowCounts) return { findings: found, counted: undefined };
+      if (!rowCounts) {
+        if (signal.aborted) throw new CompareCancelledError('Compare cancelled');
+        return { findings: found, counted: undefined };
+      }
       const pairs = matchedPairs(lObjs, rObjs);
-      const results = await countMatchedTables(
-        pairs,
-        async (side, name) => {
-          const s = side === 'left' ? left : right;
-          return (await env.query<{ cnt: unknown }>(s, countRowsQuery({ schema: s.schema, name }), signal))[0]?.cnt;
-        },
-        {
-          limit: 4, signal,
-          onStart: (i, total, pair) => report(`Counting rows ${i + 1} of ${total}: ${left.schema}.${pair.left}…`),
-        },
-      );
+      const sessions: SideSession[] = [];
+      let results;
+      try {
+        const ls = await env.session(left); sessions.push(ls);
+        const rs = await env.session(right); sessions.push(rs);
+        results = await countMatchedTables(
+          pairs,
+          async (side, name) => {
+            const s = side === 'left' ? left : right;
+            const sess = side === 'left' ? ls : rs;
+            return (await sess.query<{ cnt: unknown }>(countRowsQuery({ schema: s.schema, name }), signal))[0]?.cnt;
+          },
+          {
+            limit: 4, signal,
+            onStart: (i, total, pair) => report(`Counting rows ${i + 1} of ${total}: ${left.schema}.${pair.left}…`),
+          },
+        );
+      } finally {
+        await Promise.all(sessions.map((x) => x.close().catch(() => { /* ignore */ })));
+      }
+      if (signal.aborted) throw new CompareCancelledError('Compare cancelled');
       return { findings: sortFindings([...found, ...rowCountFindings(results)]), counted: pairs.length };
     });
+    progressDone = true;
 
     const path = await env.saveDialog(reportFileName(left, right, now()));
     if (!path) return;
@@ -115,7 +137,7 @@ export async function runSchemaCompare(
     const choice = await env.info(reportSummary(findings, counted), 'Open again');
     if (choice === 'Open again') await env.open(path);
   } catch (err) {
-    if (err instanceof CompareCancelledError || cancelSignal?.aborted) return;
+    if (err instanceof CompareCancelledError || (!progressDone && cancelSignal?.aborted)) return;
     env.error(`Schema compare failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
