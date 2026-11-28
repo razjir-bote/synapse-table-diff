@@ -1,7 +1,7 @@
 import { finished } from 'node:stream/promises';
 import type { CompareResult, DiffRow } from '../core/types';
 
-const BOM = '\uFEFF';
+export const BOM = '\uFEFF';
 const FLUSH_CHARS = 64 * 1024;
 
 const FORMULA_START = /^[=+\-@\t\r]/;

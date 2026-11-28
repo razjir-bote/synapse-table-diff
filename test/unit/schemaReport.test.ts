@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BOM } from '../../src/export/csv';
 import type { ColumnInfo } from '../../src/core/types';
 import {
   diffSchemas, groupSchemaRows, reportFileName, reportSummary, schemaReportCsv, typeText,
@@ -78,6 +79,20 @@ describe('diffSchemas', () => {
     expect(by('missing_table').column).toBe('');
     expect(by('missing_table').leftType).toBe('');
   });
+  it('compares nvarchar max against nvarchar(4000) as a size mismatch', () => {
+    const mk = (n: number): SchemaObject[] => [{ name: 'T', kind: 'table', columns: [col('c', 'nvarchar', { maxLength: n })] }];
+    const r = diffSchemas(mk(-1), mk(8000));
+    expect(r).toHaveLength(1);
+    expect(r[0].issue).toBe('size_mismatch');
+    expect(r[0].leftType).toBe('nvarchar(max)');
+    expect(r[0].rightType).toBe('nvarchar(4000)');
+    expect(r[0].details).toBe('nvarchar(max) vs nvarchar(4000)');
+  });
+  it('nvarchar(50) vs varchar(50) is a type mismatch', () => {
+    const mk = (t: string, n: number): SchemaObject[] => [{ name: 'T', kind: 'table', columns: [col('c', t, { maxLength: n })] }];
+    const r = diffSchemas(mk('nvarchar', 100), mk('varchar', 50));
+    expect(r.map((x) => x.issue)).toEqual(['type_mismatch']);
+  });
   it('identical inputs give no findings', () => {
     expect(diffSchemas(left, left)).toEqual([]);
   });
@@ -87,7 +102,7 @@ describe('schemaReportCsv', () => {
   it('has BOM, header, CRLF and neutralizes formulas', () => {
     const fs: Finding[] = [{ issue: 'extra_column', table: 't', column: '=cmd', leftType: '', rightType: 'int', details: 'a,b' }];
     const csv = schemaReportCsv(fs);
-    expect(csv.startsWith('﻿issue,table,column,left_type,right_type,details,status\r\n')).toBe(true);
+    expect(csv.startsWith(BOM + 'issue,table,column,left_type,right_type,details,status\r\n')).toBe(true);
     expect(csv).toContain("'=cmd");
     expect(csv).toContain('"a,b",\r\n');
   });

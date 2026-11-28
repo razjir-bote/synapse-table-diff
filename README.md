@@ -148,10 +148,10 @@ Both sides are read in parallel, and the result is saved as a CSV report that op
 
 Issue types:
 
-- `missing_table`: the table is on the right but not on the left.
-- `extra_table`: the table is on the left but not on the right.
-- `missing_column`: the column is on the right but not on the left.
-- `extra_column`: the column is on the left but not on the right.
+- `missing_table`: the table, view or external table is on the left but has no match on the right.
+- `extra_table`: the table, view or external table is only on the right.
+- `missing_column`: the column is in the left table but not in the right one.
+- `extra_column`: the column is only in the right table.
 - `type_mismatch`: the column has a different base type (for example `int` and `bigint`).
 - `size_mismatch`: the base type is the same but the length, precision or scale differs (for example `varchar(50)` and `varchar(100)`).
 

@@ -58,6 +58,8 @@ describe('queries', () => {
       expect(q.replace(/[\[\]]/g, '')).toContain(` AS ${a}`);
     }
     expect(listSchemasQuery()).toContain('ORDER BY s.name');
+    expect(listSchemasQuery()).toContain("s.schema_id < 16384 AND s.name NOT IN ('sys', 'INFORMATION_SCHEMA', 'guest')");
+    expect(listSchemasQuery()).not.toContain('sys.objects');
   });
 
   it('catalog queries use OBJECT_ID with a quoted name', () => {

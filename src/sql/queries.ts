@@ -27,10 +27,9 @@ export function listObjectsQuery(): string {
 /** Schemas holding at least one table, view or external table. */
 export function listSchemasQuery(): string {
   return [
-    'SELECT DISTINCT s.name AS name',
+    'SELECT s.name AS name',
     'FROM sys.schemas AS s',
-    'INNER JOIN sys.objects AS o ON o.schema_id = s.schema_id',
-    "WHERE o.type IN ('U', 'V', 'ET')",
+    "WHERE s.schema_id < 16384 AND s.name NOT IN ('sys', 'INFORMATION_SCHEMA', 'guest')",
     'ORDER BY s.name',
   ].join('\n');
 }

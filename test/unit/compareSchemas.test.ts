@@ -50,6 +50,25 @@ function makeEnv(over: Partial<SchemaCompareEnv> & { answers?: (string | undefin
 const now = () => new Date(2026, 10, 28, 9, 5);
 
 describe('runSchemaCompare', () => {
+  it('shows an info message and stops when no databases are found', async () => {
+    const t = makeEnv({ answers: ['p1'], query: async () => [] });
+    await runSchemaCompare(t.env, now);
+    expect(t.infos.map((i) => i.message)).toEqual(['No databases found on One.']);
+    expect(t.picks).toHaveLength(1);
+    expect(t.saved).toEqual([]);
+  });
+
+  it('shows an info message and stops when no schemas are found', async () => {
+    const t = makeEnv({
+      answers: ['p1', 'dbL'],
+      query: async <T,>(_s: unknown, sql: string) => (sql === listSchemasQuery() ? [] : [{ name: 'x' }]) as T[],
+    });
+    await runSchemaCompare(t.env, now);
+    expect(t.infos.map((i) => i.message)).toEqual(['No schemas found in dbL.']);
+    expect(t.picks).toHaveLength(2);
+    expect(t.saved).toEqual([]);
+  });
+
   it('runs the six picks in order and writes the report', async () => {
     const t = makeEnv();
     await runSchemaCompare(t.env, now);

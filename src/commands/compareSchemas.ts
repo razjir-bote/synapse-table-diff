@@ -35,9 +35,18 @@ async function pickSide(
   // An empty database means the profile's own default; the env resolves it.
   if (profileId === undefined) return undefined;
   const dbs = await env.query<{ name: string }>({ profileId, database: '' }, listDatabasesQuery());
+  if (dbs.length === 0) {
+    const name = env.profiles().find((p) => p.id === profileId)?.name ?? profileId;
+    await env.info(`No databases found on ${name}.`);
+    return undefined;
+  }
   const database = await env.pick(dbs.map((d) => d.name), `${label}: database`, remembered?.database);
   if (database === undefined) return undefined;
   const schemas = await env.query<{ name: string }>({ profileId, database }, listSchemasQuery());
+  if (schemas.length === 0) {
+    await env.info(`No schemas found in ${database}.`);
+    return undefined;
+  }
   const schema = await env.pick(schemas.map((s) => s.name), `${label}: schema`, remembered?.schema);
   if (schema === undefined) return undefined;
   return { profileId, database, schema };

@@ -19,12 +19,14 @@ async function run<T>(database: string, query: string): Promise<T[]> {
 }
 
 describe('schema compare metadata queries', () => {
-  it('lists schemas holding tables or views, without system schemas', async () => {
+  it('lists user schemas, including empty ones, without system schemas', async () => {
     const names = (await run<{ name: string }>('tablediff_a', listSchemasQuery())).map((r) => r.name);
     expect(names).toContain('cmp_l');
     expect(names).toContain('dbo');
     expect(names).not.toContain('sys');
     expect(names).not.toContain('guest');
+    expect(names).not.toContain('INFORMATION_SCHEMA');
+    expect(names).not.toContain('db_owner');
   });
 
   it('finds exactly the seeded differences between cmp_l and cmp_r', async () => {

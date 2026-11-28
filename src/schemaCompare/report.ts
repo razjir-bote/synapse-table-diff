@@ -1,6 +1,6 @@
 import type { ColumnInfo } from '../core/types';
 import { objectKindOf, type ObjectKind } from '../sql/queries';
-import { csvLine } from '../export/csv';
+import { BOM, csvLine } from '../export/csv';
 
 export interface SchemaColumnRow {
   object_name: string; object_type: string; column_name: string; type_name: string;
@@ -109,7 +109,7 @@ export function diffSchemas(left: SchemaObject[], right: SchemaObject[]): Findin
 }
 
 export function schemaReportCsv(findings: Finding[]): string {
-  let s = '﻿' + csvLine(['issue', 'table', 'column', 'left_type', 'right_type', 'details', 'status']);
+  let s = BOM + csvLine(['issue', 'table', 'column', 'left_type', 'right_type', 'details', 'status']);
   for (const f of findings) s += csvLine([f.issue, f.table, f.column, f.leftType, f.rightType, f.details, '']);
   return s;
 }
