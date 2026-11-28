@@ -124,3 +124,12 @@ describe('reportFileName', () => {
       .toBe('schema-diff_dw.dbo_vs_lake.ext_20261128-0905.csv');
   });
 });
+
+describe('reportSummary with row counts', () => {
+  const f = (issue: Finding['issue']): Finding => ({ issue, table: 't', column: '', leftType: '', rightType: '', details: '' });
+  it('row count mismatch', () => expect(reportSummary([f('row_count_mismatch')])).toBe('1 finding: 1 row count mismatch'));
+  it('row count errors plural', () => expect(reportSummary([f('row_count_error'), f('row_count_error')])).toBe('2 findings: 2 row count errors'));
+  it('no findings', () => expect(reportSummary([], 12)).toBe('No differences found; row counts match for 12 tables.'));
+  it('suffix', () => expect(reportSummary([f('missing_column')], 1)).toBe('1 finding: 1 missing column; row counts match for 1 table'));
+  it('no suffix when row count findings exist', () => expect(reportSummary([f('row_count_mismatch')], 3)).toBe('1 finding: 1 row count mismatch'));
+});

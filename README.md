@@ -144,6 +144,8 @@ leading `'`, so opening the file in Excel cannot run them.
 
 **Table Diff: Compare Schemas…** (also a button in the Connections view) checks that one schema has the same tables and columns as another, for example a dev database against a production one. Pick a connection, database and schema for the left side (the schema to check), then the same for the right side (the schema it should match). The last picks are remembered and listed first next time.
 
+A last pick, **Compare row counts too?**, offers **Structure only** (the default) or **Structure and row counts**. With row counts, every table, view or external table found on both sides is counted, 4 at a time, with progress such as `Counting rows 3 of 12: dbo.orders…`. Counts are exact (`COUNT_BIG(*)`). On a serverless pool each count reads that table's files, so it is billed for the data scanned; on large schemas expect it to take a while. The **Cancel** button on the progress notification stops counting and abandons the run without writing a report.
+
 Both sides are read in parallel, and the result is saved as a CSV report that opens when it is done. The columns are `issue,table,column,left_type,right_type,details,status`; `status` is left empty for you to fill in.
 
 Issue types:
@@ -154,8 +156,10 @@ Issue types:
 - `extra_column`: the column is only in the right table.
 - `type_mismatch`: the column has a different base type (for example `int` and `bigint`).
 - `size_mismatch`: the base type is the same but the length, precision or scale differs (for example `varchar(50)` and `varchar(100)`).
+- `row_count_mismatch` (row counts only): both sides have the table but different numbers of rows; `details` reads like `left 3 rows, right 2 rows (1 fewer on the right)`.
+- `row_count_error` (row counts only): a side could not be counted, for example a view whose underlying table is gone; `details` is `left: <message>` and/or `right: <message>`.
 
-Matching rules: table and column names match case-insensitively, and a table, view or external table matches any of the three kinds. Rows are sorted by table, then issue, then column.
+Matching rules: table and column names match case-insensitively, and a table, view or external table matches any of the three kinds. Rows are sorted by table, then issue, then column. When every count matches, the summary says `row counts match for N tables`.
 
 On serverless pools, external tables often report string columns as `varchar(8000)` or `varchar(max)` where the source defines a shorter length. Expect `size_mismatch` rows for those; they usually reflect how the serverless pool infers types, not a real difference in the data.
 

@@ -59,6 +59,11 @@ export function objectKindOf(objectType: unknown): ObjectKind {
   return 'table';
 }
 
+/** Exact row count of one table, view or external table (value: `cnt`, a bigint). */
+export function countRowsQuery(t: { schema: string; name: string }): string {
+  return `SELECT COUNT_BIG(*) AS cnt FROM ${qualifiedName(t)}`;
+}
+
 export function columnsQuery(t: { schema: string; name: string }): string {
   return [
     'SELECT c.name AS name, t.name AS type_name, c.max_length AS max_length, c.precision AS precision,',

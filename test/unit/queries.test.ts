@@ -4,7 +4,7 @@ import type { ColumnInfo, ComparePlan, CompareRequest, TableRef } from '../../sr
 import { assertAllowedSql } from '../../src/sql/allowList';
 import { normalizeExpr } from '../../src/sql/normalize';
 import {
-  bucketQuery, columnsQuery, declaredKeyQuery, detailQuery, engineEditionQuery,
+  bucketQuery, columnsQuery, countRowsQuery, declaredKeyQuery, detailQuery, engineEditionQuery,
   listDatabasesQuery, listObjectsQuery, listSchemasQuery, schemaColumnsQuery, needsMaxStart, objectKindOf, pairQuery,
 } from '../../src/sql/queries';
 
@@ -252,6 +252,14 @@ describe('queries', () => {
     );
     const q = bucketQuery(p, 'left', ref, undefined, 1);
     expect(q).toContain('DATEADD(second, 30, CAST([t] AS datetime2(7)))');
+    expect(() => assertAllowedSql(q)).not.toThrow();
+  });
+});
+
+describe('countRowsQuery', () => {
+  it('quotes names and passes the allow-list', () => {
+    const q = countRowsQuery({ schema: 'dbo', name: 'a]b c' });
+    expect(q).toBe('SELECT COUNT_BIG(*) AS cnt FROM [dbo].[a]]b c]');
     expect(() => assertAllowedSql(q)).not.toThrow();
   });
 });

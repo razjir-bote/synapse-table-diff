@@ -7,10 +7,11 @@ export interface SchemaColumnRow {
   max_length: number; precision: number; scale: number; is_nullable: boolean; column_id: number;
 }
 export interface SchemaObject { name: string; kind: ObjectKind; columns: ColumnInfo[] }
-export type IssueType = 'missing_table' | 'extra_table' | 'missing_column' | 'extra_column' | 'type_mismatch' | 'size_mismatch';
+export type IssueType = 'missing_table' | 'extra_table' | 'missing_column' | 'extra_column' | 'type_mismatch' | 'size_mismatch'
+  | 'row_count_mismatch' | 'row_count_error';
 export interface Finding { issue: IssueType; table: string; column: string; leftType: string; rightType: string; details: string }
 
-const ISSUE_ORDER: IssueType[] = ['missing_table', 'extra_table', 'missing_column', 'extra_column', 'type_mismatch', 'size_mismatch'];
+const ISSUE_ORDER: IssueType[] = ['missing_table', 'extra_table', 'missing_column', 'extra_column', 'type_mismatch', 'size_mismatch', 'row_count_mismatch', 'row_count_error'];
 const ISSUE_LABEL: Record<IssueType, [string, string]> = {
   missing_table: ['missing table', 'missing tables'],
   extra_table: ['extra table', 'extra tables'],
@@ -18,6 +19,8 @@ const ISSUE_LABEL: Record<IssueType, [string, string]> = {
   extra_column: ['extra column', 'extra columns'],
   type_mismatch: ['type mismatch', 'type mismatches'],
   size_mismatch: ['size mismatch', 'size mismatches'],
+  row_count_mismatch: ['row count mismatch', 'row count mismatches'],
+  row_count_error: ['row count error', 'row count errors'],
 };
 
 export function groupSchemaRows(rows: SchemaColumnRow[]): SchemaObject[] {
@@ -103,7 +106,12 @@ export function diffSchemas(left: SchemaObject[], right: SchemaObject[]): Findin
       out.push({ issue: 'extra_table', table: r.name, column: '', leftType: '', rightType: '', details: `${r.kind} on the right; not on the left` });
     }
   }
-  return out.sort(
+  return sortFindings(out);
+}
+
+/** Report order: table, then issue kind, then column. Sorts in place and returns the array. */
+export function sortFindings(findings: Finding[]): Finding[] {
+  return findings.sort(
     (a, b) => cmp(a.table, b.table) || ISSUE_ORDER.indexOf(a.issue) - ISSUE_ORDER.indexOf(b.issue) || cmp(a.column, b.column),
   );
 }
@@ -114,15 +122,19 @@ export function schemaReportCsv(findings: Finding[]): string {
   return s;
 }
 
-export function reportSummary(findings: Finding[]): string {
-  if (findings.length === 0) return 'No differences found.';
+export function reportSummary(findings: Finding[], countedTables?: number): string {
+  const counted = countedTables !== undefined && countedTables > 0;
+  const matchText = counted ? `row counts match for ${countedTables} ${countedTables === 1 ? 'table' : 'tables'}` : '';
+  if (findings.length === 0) return counted ? `No differences found; ${matchText}.` : 'No differences found.';
   const parts: string[] = [];
   for (const i of ISSUE_ORDER) {
     const n = findings.filter((f) => f.issue === i).length;
     if (n > 0) parts.push(`${n} ${ISSUE_LABEL[i][n === 1 ? 0 : 1]}`);
   }
   const total = findings.length;
-  return `${total} ${total === 1 ? 'finding' : 'findings'}: ${parts.join(', ')}`;
+  const base = `${total} ${total === 1 ? 'finding' : 'findings'}: ${parts.join(', ')}`;
+  const hasCountFinding = findings.some((f) => f.issue === 'row_count_mismatch' || f.issue === 'row_count_error');
+  return counted && !hasCountFinding ? `${base}; ${matchText}` : base;
 }
 
 export function reportFileName(

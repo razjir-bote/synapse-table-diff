@@ -7,6 +7,7 @@ import { RecentStore } from './profiles/recentStore';
 import { registerConnectionCommands, removeConnection } from './profiles/connectionCommands';
 import { registerSidebar } from './ui/sidebar';
 import { entraTokenProvider, makeConnector } from './db/auth';
+import type { QueryRunner } from './db/runner';
 import { runComparison } from './core/pipeline';
 import type { CompareRequest, CompareResult, TableRef } from './core/types';
 import { readLimits, recentLabel, runFromRequest, type CompareEnv } from './commands/compare';
@@ -84,21 +85,48 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const chosen = await vscode.window.showQuickPick(list, { placeHolder });
       return chosen?.value;
     },
-    query: async (side, sql) => {
+    query: async (side, sql, signal) => {
       // An empty database means the profile's own default.
       const database = side.database || store.get(side.profileId)?.database || '';
       const runner = await (await connect({ profileId: side.profileId, database }, limits().queryTimeoutSeconds)).open();
       try {
-        return await runner.query(sql);
+        return await runner.query(sql, signal);
       } finally {
         await runner.close();
       }
     },
-    lastChoice: () => ctx.globalState.get<{ left: SchemaSide; right: SchemaSide }>(SCHEMA_LAST_KEY),
+    session: async (side) => {
+      const database = side.database || store.get(side.profileId)?.database || '';
+      const connector = await connect({ profileId: side.profileId, database }, limits().queryTimeoutSeconds);
+      const idle: QueryRunner[] = [];
+      return {
+        query: async <T,>(sql: string, signal?: AbortSignal) => {
+          const runner = idle.pop() ?? await connector.open();
+          try {
+            const rows = await runner.query<T>(sql, signal);
+            idle.push(runner);
+            return rows;
+          } catch (err) {
+            // It may be mid-cancel; never reuse it.
+            try { await runner.close(); } catch { /* ignore */ }
+            throw err;
+          }
+        },
+        close: async () => {
+          await Promise.all(idle.splice(0).map((r) => r.close().catch(() => { /* ignore */ })));
+        },
+      };
+    },
+    lastChoice: () => ctx.globalState.get<{ left: SchemaSide; right: SchemaSide; rowCounts?: boolean }>(SCHEMA_LAST_KEY),
     saveChoice: async (c) => { await ctx.globalState.update(SCHEMA_LAST_KEY, c); },
     withProgress: (title, task) =>
       Promise.resolve(vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title }, (p) => task((message) => p.report({ message })))),
+        { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+        (p, token) => {
+          const ac = new AbortController();
+          token.onCancellationRequested(() => ac.abort());
+          return task((message) => p.report({ message }), ac.signal);
+        })),
     saveDialog: async (name) => {
       const dir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
       const target = await vscode.window.showSaveDialog({
