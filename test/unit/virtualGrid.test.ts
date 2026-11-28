@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
-import { VirtualGrid } from '../../webview/results/virtualGrid';
-import type { DiffRow } from '../../src/core/types';
+import { VirtualGrid, buildAggregateRow } from '../../webview/results/virtualGrid';
+import type { AggregateRow, DiffRow } from '../../src/core/types';
 
 const mk = (i: number): DiffRow => ({ kind: 'changed', key: [String(i)], left: ['open'], right: ['closed'], changedColumns: ['Status'] });
 const rowsFrom = (offset: number, n: number) => Array.from({ length: n }, (_, i) => mk(offset + i));
@@ -77,5 +77,29 @@ describe('VirtualGrid', () => {
     expect(row.style.height).toBe('24px');
     expect(row.style.gridTemplateColumns).not.toBe('');
     spy.mockRestore();
+  });
+});
+
+describe('buildAggregateRow', () => {
+  const row: AggregateRow = {
+    kind: 'changed', group: ['east', null],
+    left: ['10', '5', null], right: ['12', '5', '3'], diff: ['2', '0', '3'], differs: [true, false, true],
+  };
+  it('renders kind, groups and L/R/Δ per target', () => {
+    const el = buildAggregateRow(row, 2);
+    const cells = Array.from(el.children) as HTMLElement[];
+    expect(cells.length).toBe(1 + 2 + 3 * 3);
+    expect(cells[1].textContent).toBe('east');
+    expect(cells[2].querySelector('.null')?.textContent).toBe('NULL');
+    expect(cells.slice(3).map((c) => c.textContent)).toEqual(['10', '12', '2', '5', '5', '0', '', '3', '3']);
+    expect(cells.slice(3).map((c) => c.classList.contains('cell-changed'))).toEqual([true, true, true, false, false, false, true, true, true]);
+  });
+  it('VirtualGrid uses a custom buildRow', () => {
+    const root = document.createElement('div');
+    const g = new VirtualGrid<AggregateRow>(root, ['g', 'Rows L', 'Rows R', 'Rows Δ'], 24, vi.fn(), { scrollTop: () => 0, clientHeight: () => 100 }, (r) => buildAggregateRow(r, 1));
+    g.setTotal(1);
+    g.setRows(0, [{ kind: 'removed', group: ['a'], left: ['1'], right: [null], diff: [null], differs: [true] }]);
+    expect(root.querySelectorAll('.grid-body .grid-row').length).toBe(1);
+    expect(root.querySelector('.grid-row')?.children.length).toBe(1 + 1 + 3);
   });
 });

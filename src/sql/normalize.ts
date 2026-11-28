@@ -21,7 +21,7 @@ type Opts = { ignoreCase: boolean; ignoreTrailingSpaces: boolean; nullEqualsBlan
 type PlanResult = { ok: true; norm: ColumnNorm } | { ok: false; reason: string };
 
 /** Precision and scale of an exact numeric column (money types have fixed values). */
-function decimalShape(c: ColumnInfo): { p: number; s: number } {
+export function decimalShape(c: ColumnInfo): { p: number; s: number } {
   if (c.type === 'money') return { p: 19, s: 4 };
   if (c.type === 'smallmoney') return { p: 10, s: 4 };
   return { p: c.precision, s: c.scale };

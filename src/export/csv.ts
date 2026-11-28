@@ -2,7 +2,7 @@ import { finished } from 'node:stream/promises';
 import type { CompareResult, DiffRow } from '../core/types';
 
 export const BOM = '\uFEFF';
-const FLUSH_CHARS = 64 * 1024;
+export const FLUSH_CHARS = 64 * 1024;
 
 const FORMULA_START = /^[=+\-@\t\r]/;
 const PLAIN_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
@@ -35,11 +35,14 @@ function csvRow(result: CompareResult, row: DiffRow): string {
 }
 
 /**
- * Streams the detail rows as CSV: UTF-8 BOM, header, then one line per row.
- * Ends the stream and resolves once it has finished writing. Rejects with the
- * stream's error if it fails at any point, including mid-stream and before finish.
+ * Runs `produce` against a text writer for `out`, then ends the stream and resolves once it has
+ * finished writing. Rejects with the stream's error if it fails at any point, including
+ * mid-stream and before finish. Shared by the row and aggregate CSV exports.
  */
-export async function writeCsv(result: CompareResult, out: NodeJS.WritableStream): Promise<void> {
+export async function streamText(
+  out: NodeJS.WritableStream,
+  produce: (writeText: (text: string) => Promise<void>) => Promise<void>,
+): Promise<void> {
   // One persistent error listener for the whole run, so a stream error is never
   // unhandled. It records the first error and wakes any pending wait.
   let failure: Error | undefined;
@@ -75,6 +78,18 @@ export async function writeCsv(result: CompareResult, out: NodeJS.WritableStream
   };
 
   try {
+    await produce(writeText);
+    out.end();
+    await finished(out as unknown as import('node:stream').Writable);
+    check();
+  } finally {
+    out.removeListener('error', onError);
+  }
+}
+
+/** Streams the detail rows as CSV: UTF-8 BOM, header, then one line per row. */
+export async function writeCsv(result: CompareResult, out: NodeJS.WritableStream): Promise<void> {
+  await streamText(out, async (writeText) => {
     const header = [
       'change_type',
       ...result.plan.keys.map((k) => k.name),
@@ -90,12 +105,7 @@ export async function writeCsv(result: CompareResult, out: NodeJS.WritableStream
       }
     }
     if (buf) await writeText(buf);
-    out.end();
-    await finished(out as unknown as import('node:stream').Writable);
-    check();
-  } finally {
-    out.removeListener('error', onError);
-  }
+  });
 }
 
 /** Message shown after a successful export. */

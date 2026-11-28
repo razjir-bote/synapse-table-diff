@@ -1,4 +1,4 @@
-import type { ChangeKind, ColumnInfo, CompareRequest, CompareResult, DiffRow, PoolType, Side, TableRef } from '../core/types';
+import type { AggregateResult, AggregateRow, ChangeKind, ColumnInfo, CompareRequest, CompareResult, DiffRow, PoolType, Side, TableRef } from '../core/types';
 import type { ObjectKind } from '../sql/queries';
 
 export type SetupToHost =
@@ -23,4 +23,6 @@ export type ResultsToHost =
 
 export type HostToResults =
   | { type: 'summary'; summary: Omit<CompareResult, 'rows'>; totalByKind: Record<ChangeKind | 'all', number> /* of rows held */ }
-  | { type: 'rows'; kind: ChangeKind | 'all'; offset: number; rows: DiffRow[] };
+  | { type: 'rows'; kind: ChangeKind | 'all'; offset: number; rows: DiffRow[] }
+  | { type: 'aggregateSummary'; summary: Omit<AggregateResult, 'rows'>; totalByKind: Record<ChangeKind | 'all', number> }
+  | { type: 'aggregateRows'; kind: ChangeKind | 'all'; offset: number; rows: AggregateRow[] };

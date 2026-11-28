@@ -16,7 +16,62 @@ export interface CompareRequest {
    * possible, anything else as text (each side converted to a canonical text form).
    */
   ignoreDataTypes?: boolean;
+  mode?: CompareMode;
+  aggregate?: AggregateSpec;
 }
+
+export type CompareMode = 'rows' | 'aggregate';
+export interface ColumnPair { left: string; right: string }
+export type AggKind = 'sum' | 'count' | 'distinct';
+export interface MeasureSpec extends ColumnPair { aggs: AggKind[] }
+export interface AggregateSpec {
+  groupBy: ColumnPair[];
+  measures: MeasureSpec[];
+  sumTolerance?: string;
+  /** Right side's filter when it differs from `filter`; '' = no right filter; absent = `filter` on both sides. */
+  rightFilter?: string;
+}
+
+export type SumMode = { kind: 'exact'; scale: number } | { kind: 'float' };
+export interface GroupPlan { leftName: string; rightName: string; label: string; norm: ColumnNorm; trailingSignificant: boolean }
+export interface MeasurePlan {
+  leftName: string; rightName: string; aggs: AggKind[];
+  /** Normalization for count/distinct; undefined when the types cannot be planned (count then uses the raw column). */
+  norm?: ColumnNorm;
+  sum?: SumMode;
+}
+export interface AggTarget {
+  /** e.g. 'Rows', 'amount · sum', 'cust ↔ customer · distinct count' */
+  label: string;
+  agg: AggKind | 'rows';
+  /** -1 for the row count */
+  measure: number;
+  /** SQL column alias: 'rc' or `m_${measure}_${agg}` */
+  alias: string;
+}
+export interface AggregatePlan { groups: GroupPlan[]; measures: MeasurePlan[]; targets: AggTarget[] }
+
+export interface AggregateRow {
+  kind: ChangeKind;            // changed = in both & differs; removed = only left; added = only right
+  group: (string | null)[];    // normalized group values (right side's for 'added')
+  left: (string | null)[];     // per target; all null for 'added'
+  right: (string | null)[];    // per target; all null for 'removed'
+  diff: (string | null)[];     // right − left per target; null unless 'changed'
+  differs: boolean[];          // per target
+}
+export interface AggregateResult {
+  mode: 'aggregate';
+  request: CompareRequest;
+  plan: AggregatePlan;
+  leftGroups: number; rightGroups: number;
+  changed: number; added: number; removed: number; matching: number;
+  rows: AggregateRow[];        // sorted by group (numeric-aware collator on group.join('\u0000')), capped at detailLimit
+  detailCapped: boolean;
+  warnings: string[];
+  durationMs: number;
+  poolTypes: { left: PoolType; right: PoolType };
+}
+
 export interface ColumnInfo {
   name: string;
   type: string; // lower-case sys.types name
@@ -112,8 +167,9 @@ export interface DiffRow {
   changedColumns: string[];
 }
 
-export type Stage = 'schema' | 'checksums' | 'rebucket' | 'compare' | 'details';
+export type Stage = 'schema' | 'checksums' | 'rebucket' | 'compare' | 'details' | 'aggregates';
 export interface CompareResult {
+  mode?: 'rows';
   request: CompareRequest;
   schema: SchemaDiff;
   plan: ComparePlan;

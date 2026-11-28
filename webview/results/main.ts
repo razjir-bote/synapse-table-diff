@@ -1,7 +1,7 @@
-import type { ChangeKind } from '../../src/core/types';
+import type { AggregateRow, ChangeKind } from '../../src/core/types';
 import type { HostToResults, ResultsToHost } from '../../src/ui/protocol';
-import { renderKeyProblems, renderSchemaTab, renderSummary } from './render';
-import { VirtualGrid } from './virtualGrid';
+import { renderAggregateSummary, renderKeyProblems, renderSchemaTab, renderSummary } from './render';
+import { buildAggregateRow, VirtualGrid } from './virtualGrid';
 
 declare function acquireVsCodeApi(): { postMessage(m: ResultsToHost): void };
 const vscode = acquireVsCodeApi();
@@ -10,6 +10,7 @@ const post = (m: ResultsToHost) => vscode.postMessage(m);
 
 type Filter = ChangeKind | 'all';
 let grid: VirtualGrid | undefined;
+let aggGrid: VirtualGrid<AggregateRow> | undefined;
 let filter: Filter = 'all';
 let totals: Record<Filter, number> = { all: 0, added: 0, removed: 0, changed: 0 };
 
@@ -30,6 +31,7 @@ function build(m: Extract<HostToResults, { type: 'summary' }>): void {
   root.textContent = '';
   totals = m.totalByKind;
   filter = 'all';
+  aggGrid = undefined;
   const s = m.summary;
   const summary = div('summary');
   renderSummary(summary, s);
@@ -80,9 +82,51 @@ function build(m: Extract<HostToResults, { type: 'summary' }>): void {
   grid.setTotal(totals.all);
 }
 
+function buildAggregate(m: Extract<HostToResults, { type: 'aggregateSummary' }>): void {
+  root.textContent = '';
+  totals = m.totalByKind;
+  filter = 'all';
+  grid = undefined;
+  const s = m.summary;
+  const summary = div('summary');
+  renderAggregateSummary(summary, s);
+  root.appendChild(summary);
+
+  const tabs = div('tabs');
+  const dataTab = button('Data', () => aggGrid?.refresh());
+  dataTab.className = 'tab active';
+  tabs.appendChild(dataTab);
+  const pane = div('pane');
+  root.append(tabs, pane);
+
+  const toolbar = div('toolbar');
+  const sel = document.createElement('select');
+  const opts: [Filter, string][] = [['all', 'All'], ['changed', 'Differs'], ['added', 'Only on right'], ['removed', 'Only on left']];
+  for (const [v, label] of opts) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = `${label} (${totals[v].toLocaleString('en-US')})`;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => {
+    filter = sel.value as Filter;
+    aggGrid?.reset(totals[filter]);
+  });
+  toolbar.append(sel, button('Export CSV', () => post({ type: 'exportCsv' })));
+  const gridRoot = div('grid');
+  pane.append(toolbar, gridRoot);
+
+  const groupCount = s.plan.groups.length;
+  const columns = [...s.plan.groups.map((g) => g.label), ...s.plan.targets.flatMap((t) => [`${t.label} L`, `${t.label} R`, `${t.label} Δ`])];
+  aggGrid = new VirtualGrid<AggregateRow>(gridRoot, columns, 24, (offset, limit) => post({ type: 'page', kind: filter, offset, limit }), {}, (r) => buildAggregateRow(r, groupCount));
+  aggGrid.setTotal(totals.all);
+}
+
 window.addEventListener('message', (e: MessageEvent<HostToResults>) => {
   const m = e.data;
   if (m.type === 'summary') build(m);
   else if (m.type === 'rows' && m.kind === filter) grid?.setRows(m.offset, m.rows);
+  else if (m.type === 'aggregateSummary') buildAggregate(m);
+  else if (m.type === 'aggregateRows' && m.kind === filter) aggGrid?.setRows(m.offset, m.rows);
 });
 post({ type: 'ready' });

@@ -112,3 +112,7 @@ button.secondary {
   cursor: pointer;
 }
 button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+.modes { display: flex; gap: 4px; margin: 8px 0; }
+.modes button.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.pair { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; }

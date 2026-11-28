@@ -123,6 +123,10 @@ CREATE TABLE dbo.[odd name]]x] ([it's] int NULL, val nvarchar(10) NULL);
 INSERT INTO dbo.[odd name]]x] ([it's], val) VALUES (1, N'a'), (2, N'b'), (3, NULL);
 CREATE TABLE dbo.empty_t (id int NULL, v int NULL);
 CREATE TABLE dbo.empty_both (id int NULL, v int NULL);
+CREATE TABLE dbo.agg_l (region varchar(10) NULL, amount decimal(10,2) NULL, cust varchar(10) NULL);
+INSERT INTO dbo.agg_l (region, amount, cust) VALUES
+  ('N', 10.00, 'c1'), ('N', 5.50, 'c2'), ('S', 7.00, 'c1'), ('a', 1.00, 'c3'),
+  (NULL, 2.00, 'c4'), ('x', 1.00, 'c5'), ('X', 2.00, 'c6');
 GO
 USE tablediff_b;
 GO
@@ -131,6 +135,10 @@ INSERT INTO dbo.[odd name]]x] ([it's], val) VALUES (1, N'a'), (2, N'b'), (3, NUL
 CREATE TABLE dbo.empty_t (id int NULL, v int NULL);
 INSERT INTO dbo.empty_t (id, v) VALUES (1, 10), (2, 20), (3, 30);
 CREATE TABLE dbo.empty_both (id int NULL, v int NULL);
+CREATE TABLE dbo.agg_r (area nvarchar(10) NULL, amt decimal(18,4) NULL, customer nvarchar(10) NULL);
+INSERT INTO dbo.agg_r (area, amt, customer) VALUES
+  (N'N', 10.0000, N'c1'), (N'N', 5.5000, N'c2'), (N'S', 7.0100, N'c1'), (N'A ', 1.0000, N'c3'),
+  (N'x', 1.0000, N'c5'), (N'X', 2.0000, N'c6'), (N'W', 3.0000, N'c9');
 GO
 
 ---------------------------------------------------------------------------- wide

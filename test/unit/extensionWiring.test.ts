@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runFromRequest, recentLabel, readLimits, doneMessage, elapsed, STAGE_MESSAGES, SERVERLESS_PROMPT, type CompareEnv } from '../../src/commands/compare';
 import { CompareCancelledError, ComparePlanError, PausedPoolError, PoolUnavailableError } from '../../src/core/errors';
-import { DEFAULT_LIMITS, type CompareRequest, type CompareResult } from '../../src/core/types';
+import { DEFAULT_LIMITS, type CompareRequest, type CompareResult, type AggregateResult } from '../../src/core/types';
 import type { PipelineDeps } from '../../src/core/pipeline';
 
 const ref = (name: string) => ({ profileId: 'p', database: 'db', schema: 'dbo', name });
@@ -12,6 +12,10 @@ const result = {
   request: req, leftRows: 50_000, rightRows: 50_005, added: 5, removed: 10, changed: 54, durationMs: 41_500,
   schema: { columns: [], differenceCount: 2 }, warnings: [], rows: [],
 } as unknown as CompareResult;
+const aggResult = {
+  mode: 'aggregate', request: { ...req, mode: 'aggregate' }, leftGroups: 412, rightGroups: 411,
+  changed: 9, added: 1, removed: 2, matching: 400, rows: [], warnings: [], durationMs: 3_400,
+} as unknown as AggregateResult;
 const stripTime = (m: string) => m.replace(/ \(\d+:\d\d\)$/, '');
 
 function makeEnv(run: CompareEnv['runComparison'], over: Record<string, unknown> = {}) {
@@ -30,6 +34,7 @@ function makeEnv(run: CompareEnv['runComparison'], over: Record<string, unknown>
     getLimits: vi.fn(() => DEFAULT_LIMITS),
     connect: vi.fn(async () => ({ label: 'x', poolType: 'other' as const, open: async () => { throw new Error('unused'); } })),
     runComparison: vi.fn(run),
+    runAggregateComparison: vi.fn(async () => aggResult),
     addRecent: vi.fn(async () => {}),
     showResults: vi.fn(),
     ...over,
@@ -113,7 +118,7 @@ describe('runFromRequest', () => {
     expect(t.reports.map(stripTime)).toEqual([
       'Connecting to both sides…', 'Connected to x (other) and x (other).',
       'Reading schemas…', 'Computing checksums…', 'Narrowing differences…', 'Comparing keys…', 'Fetching changed rows…',
-      'Fetching 5 of 10 rows…',
+      'Computing aggregates…', 'Fetching 5 of 10 rows…',
     ]);
   });
 
@@ -127,6 +132,27 @@ describe('runFromRequest', () => {
     expect(doneMessage(same as CompareResult)).toBe(
       'Table Diff finished in 0:41: no row differences (50,000 vs 50,005 rows). See the warnings in the results.',
     );
+  });
+
+  it('aggregate done messages', () => {
+    expect(doneMessage(aggResult)).toBe(
+      'Table Diff finished in 0:03: 12 groups differ, 2 only on left, 1 only on right (412 vs 411 groups).');
+    const same = { ...aggResult, changed: 0, added: 0, removed: 0, rightGroups: 412, warnings: ['x'] };
+    expect(doneMessage(same as AggregateResult)).toBe(
+      'Table Diff finished in 0:03: all 412 groups match. See the warnings in the results.');
+    const noLeft = { ...aggResult, changed: 9, removed: 0 };
+    expect(doneMessage(noLeft as AggregateResult)).toContain('10 groups differ, 0 only on left, 1 only on right');
+  });
+
+  it('aggregate requests run runAggregateComparison without confirmExtraScan', async () => {
+    const t = makeEnv(async () => result);
+    const areq = { ...req, mode: 'aggregate' as const };
+    await runFromRequest(areq, t.env);
+    expect(t.env.runComparison).not.toHaveBeenCalled();
+    const [r, deps] = (t.env.runAggregateComparison as any).mock.calls[0];
+    expect(r).toBe(areq);
+    expect(deps.confirmExtraScan).toBeUndefined();
+    expect(t.env.showResults).toHaveBeenCalledWith(aggResult);
   });
 
   it('confirmExtraScan uses a modal warning', async () => {

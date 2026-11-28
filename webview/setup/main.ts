@@ -1,6 +1,7 @@
 import type { CompareRequest, Side } from '../../src/core/types';
 import type { HostToSetup, SetupToHost } from '../../src/ui/protocol';
-import { applyHostMessage } from './reducer';
+import { aggregateRequest, isNumericPair, newMeasure, newPair } from './aggregateForm';
+import { applyHostMessage, initialPending } from './reducer';
 import { canRun, excludeAllColumns, renderSetup, type SetupActions, type SetupState } from './render';
 
 declare function acquireVsCodeApi(): { postMessage(m: SetupToHost): void };
@@ -18,12 +19,19 @@ let state: SetupState = {
   ignoreTrailingSpaces: false,
   nullEqualsBlank: false,
   ignoreDataTypes: false,
+  mode: 'rows',
+  groupBy: [],
+  measures: [],
+  sumTolerance: '',
+  sameFilter: true,
+  rightFilter: '',
 };
 const lc = (s: string) => s.toLowerCase();
 const post = (m: SetupToHost) => vscode.postMessage(m);
 const draw = () => renderSetup(root, state, actions);
 
 function resetColumns(): void {
+  if (state.mode === 'aggregate') return; // pairs are pruned after the sides are described
   state.pendingInitial = undefined;
   state.keyColumns = [];
   state.excludedColumns = [];
@@ -87,6 +95,56 @@ const actions: SetupActions = {
     state.excludedColumns = excludeAllColumns(state, on);
     draw();
   },
+  onMode(mode) {
+    state.mode = mode;
+    draw();
+  },
+  onAddGroup() {
+    state.groupBy.push(newPair(state, state.groupBy));
+    draw();
+  },
+  onGroup(i, side, col) {
+    if (state.groupBy[i]) state.groupBy[i][side] = col;
+    draw();
+  },
+  onRemoveGroup(i) {
+    state.groupBy.splice(i, 1);
+    draw();
+  },
+  onAddMeasure() {
+    state.measures.push(newMeasure(state));
+    draw();
+  },
+  onMeasure(i, side, col) {
+    const m = state.measures[i];
+    if (m) {
+      m[side] = col;
+      if (!isNumericPair(state, m)) m.aggs = m.aggs.filter((a) => a !== 'sum');
+    }
+    draw();
+  },
+  onMeasureAgg(i, agg, on) {
+    const m = state.measures[i];
+    if (m) {
+      m.aggs = m.aggs.filter((a) => a !== agg);
+      if (on) m.aggs.push(agg);
+    }
+    draw();
+  },
+  onRemoveMeasure(i) {
+    state.measures.splice(i, 1);
+    draw();
+  },
+  onSumTolerance(text) {
+    state.sumTolerance = text; // render refreshes the Run button itself; redrawing would drop input focus
+  },
+  onSameFilter(on) {
+    state.sameFilter = on;
+    draw();
+  },
+  onRightFilter(text) {
+    state.rightFilter = text;
+  },
   onRun() {
     if (!canRun(state).ok) return;
     const l = state.sides.left;
@@ -94,9 +152,13 @@ const actions: SetupActions = {
     const request: CompareRequest = {
       left: { profileId: l.profileId!, database: l.database!, schema: l.table!.schema, name: l.table!.name },
       right: { profileId: r.profileId!, database: r.database!, schema: r.table!.schema, name: r.table!.name },
-      keyColumns: [...state.keyColumns],
-      excludedColumns: [...state.excludedColumns],
-      filter: state.filter.trim() === '' ? undefined : state.filter,
+      ...(state.mode === 'aggregate'
+        ? aggregateRequest(state)
+        : {
+            keyColumns: [...state.keyColumns],
+            excludedColumns: [...state.excludedColumns],
+            filter: state.filter.trim() === '' ? undefined : state.filter,
+          }),
       ignoreCase: state.ignoreCase,
       ignoreTrailingSpaces: state.ignoreTrailingSpaces,
       nullEqualsBlank: state.nullEqualsBlank,
@@ -122,8 +184,15 @@ function init(profiles: { id: string; name: string }[], initial?: CompareRequest
     ignoreTrailingSpaces: initial.ignoreTrailingSpaces,
     nullEqualsBlank: initial.nullEqualsBlank === true,
     ignoreDataTypes: initial.ignoreDataTypes === true,
+    mode: initial.mode === 'aggregate' ? 'aggregate' : 'rows',
+    groupBy: [],
+    measures: [],
+    sumTolerance: initial.aggregate?.sumTolerance ?? '',
+    sameFilter: initial.aggregate?.rightFilter === undefined,
+    rightFilter: initial.aggregate?.rightFilter ?? '',
   };
-  state.pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
+  if (initial.mode === 'aggregate' && initial.aggregate) state.pendingAggregate = initial.aggregate;
+  state.pendingInitial = initialPending(initial);
   for (const side of ['left', 'right'] as Side[]) {
     const t = initial[side];
     state.sides[side].profileId = t.profileId;
