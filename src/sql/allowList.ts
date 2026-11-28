@@ -11,6 +11,7 @@ const KEYWORD_NAMES = [
   'SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'AS', 'AND', 'OR', 'NOT', 'IN',
   'IS', 'NULL', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'DISTINCT', 'TOP', 'HAVING',
   'ASC', 'JOIN', 'ON', 'INNER', 'LEFT', 'UNION', 'ALL',
+  'COLLATE', 'Latin1_General_100_BIN2',
 ];
 
 const TYPE_NAMES = [
@@ -37,7 +38,7 @@ const SYS_CATALOG_SET: ReadonlySet<string> = new Set(SYS_CATALOG_NAMES);
 const DATEPART_SET: ReadonlySet<string> = new Set(DATEPART_NAMES.map((n) => n.toUpperCase()));
 
 const ALIAS_RE =
-  /^(kh|rh|knull|b24|b1|b2|b|f|cnt|dk|s1|s2|k_\d+|v_\d+|n_\d+|h|x|name|type_name|max_length|precision|scale|is_nullable|column_id|schema_name|object_name|object_type|is_primary_key|is_unique_constraint|engine_edition|key_ordinal|c|t|s|o|i|ic|object_id|user_type_id|schema_id|type|index_id|is_unique)$/;
+  /^(kh|rh|knull|b24|b1|b2|b|f|cnt|dk|s1|s2|k_\d+|v_\d+|n_\d+|g_\d+|rc|m_\d+_(?:sum|count|distinct)|h|x|name|type_name|max_length|precision|scale|is_nullable|column_id|schema_name|object_name|object_type|is_primary_key|is_unique_constraint|engine_edition|key_ordinal|c|t|s|o|i|ic|object_id|user_type_id|schema_id|type|index_id|is_unique)$/;
 
 type TokKind = 'word' | 'bracket' | 'literal' | 'number' | 'op' | 'hash' | 'other';
 
