@@ -24,6 +24,32 @@ export function listObjectsQuery(): string {
   ].join('\n');
 }
 
+/** Schemas holding at least one table, view or external table. */
+export function listSchemasQuery(): string {
+  return [
+    'SELECT DISTINCT s.name AS name',
+    'FROM sys.schemas AS s',
+    'INNER JOIN sys.objects AS o ON o.schema_id = s.schema_id',
+    "WHERE o.type IN ('U', 'V', 'ET')",
+    'ORDER BY s.name',
+  ].join('\n');
+}
+
+/** Every column of every table, view and external table in a schema (rows: SchemaColumnRow). */
+export function schemaColumnsQuery(schema: string): string {
+  return [
+    'SELECT o.name AS object_name, o.type AS object_type, c.name AS [column_name], t.name AS type_name,',
+    'c.max_length AS max_length, c.precision AS precision, c.scale AS scale, c.is_nullable AS is_nullable,',
+    'c.column_id AS column_id',
+    'FROM sys.objects AS o',
+    'INNER JOIN sys.schemas AS s ON o.schema_id = s.schema_id',
+    'INNER JOIN sys.columns AS c ON c.object_id = o.object_id',
+    'INNER JOIN sys.types AS t ON c.user_type_id = t.user_type_id',
+    `WHERE s.name = ${sqlString(schema)} AND o.type IN ('U', 'V', 'ET')`,
+    'ORDER BY o.name, c.column_id',
+  ].join('\n');
+}
+
 export type ObjectKind = 'table' | 'view' | 'external table';
 
 /** Maps a sys.objects type code from listObjectsQuery to the kind shown in the table list. */

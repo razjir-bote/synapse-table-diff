@@ -229,5 +229,24 @@ GO
 INSERT INTO dbo.big WITH (TABLOCK) (id, v, w)
 SELECT id, CASE WHEN id % 3000 = 7 THEN v + 1 ELSE v END, w FROM tablediff_a.dbo.big;
 GO
+---------------------------------------------------------------------------- schema compare
+USE tablediff_a;
+GO
+CREATE SCHEMA cmp_l;
+GO
+CREATE TABLE cmp_l.t1 (id int, name varchar(50), amt decimal(10,2), note nvarchar(100));
+CREATE TABLE cmp_l.t2 (id int);
+GO
+CREATE VIEW cmp_l.v1 AS SELECT id FROM cmp_l.t1;
+GO
+USE tablediff_b;
+GO
+CREATE SCHEMA cmp_r;
+GO
+CREATE TABLE cmp_r.T1 (id int, name nvarchar(50), amt decimal(18,4), extra int);
+CREATE TABLE cmp_r.t3 (id int);
+GO
+CREATE VIEW cmp_r.v1 AS SELECT id FROM cmp_r.T1;
+GO
 USE master;
 GO

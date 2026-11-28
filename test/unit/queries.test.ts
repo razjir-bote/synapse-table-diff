@@ -5,7 +5,7 @@ import { assertAllowedSql } from '../../src/sql/allowList';
 import { normalizeExpr } from '../../src/sql/normalize';
 import {
   bucketQuery, columnsQuery, declaredKeyQuery, detailQuery, engineEditionQuery,
-  listDatabasesQuery, listObjectsQuery, needsMaxStart, objectKindOf, pairQuery,
+  listDatabasesQuery, listObjectsQuery, listSchemasQuery, schemaColumnsQuery, needsMaxStart, objectKindOf, pairQuery,
 } from '../../src/sql/queries';
 
 function col(name: string, type: string, o: Partial<ColumnInfo> = {}): ColumnInfo {
@@ -45,6 +45,19 @@ describe('queries', () => {
       detailQuery(plan, 'right', ref, undefined, { level: 2, ids: [5, 9] }),
     ];
     for (const q of all) expect(() => assertAllowedSql(q), q).not.toThrow();
+  });
+
+  it('schema-compare queries pass the allow-list and escape the schema name', () => {
+    expect(() => assertAllowedSql(listSchemasQuery())).not.toThrow();
+    const q = schemaColumnsQuery("o'brien");
+    expect(() => assertAllowedSql(q), q).not.toThrow();
+    expect(q).toContain("s.name = N'o''brien'");
+    expect(q).toContain("o.type IN ('U', 'V', 'ET')");
+    expect(q).toContain('ORDER BY o.name, c.column_id');
+    for (const a of ['object_name', 'object_type', 'column_name', 'type_name', 'max_length', 'precision', 'scale', 'is_nullable', 'column_id']) {
+      expect(q.replace(/[\[\]]/g, '')).toContain(` AS ${a}`);
+    }
+    expect(listSchemasQuery()).toContain('ORDER BY s.name');
   });
 
   it('catalog queries use OBJECT_ID with a quoted name', () => {
