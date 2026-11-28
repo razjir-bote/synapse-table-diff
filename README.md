@@ -140,6 +140,21 @@ Use **Export CSV** to save the differences. The export is streamed to disk. Valu
 formula (starting with `=`, `+`, `-`, `@` or a tab, other than plain numbers such as `-5`) are written with a
 leading `'`, so opening the file in Excel cannot run them.
 
+## Compare aggregates
+
+Switch the Compare Tables form from **Rows** to **Aggregates** to reconcile totals instead of rows. No key is needed, and column names may differ between the two tables.
+
+- **Group by**: add pairs such as `region ↔ area`. With no pairs, the whole table is one group.
+- **Measures**: add pairs such as `amount ↔ amt` and tick **Sum**, **Count** (non-NULL values) and/or **Distinct count** for each. Sum is offered only when both columns are numeric. The row count of each group is always compared.
+- **Sum tolerance** (optional): an amount such as `0.01`, or a percentage such as `0.1%` of the larger sum. Integer and decimal sums are otherwise compared exactly; float sums allow tiny rounding differences. Counts are always exact.
+- **Filters**: untick *Same filter for both sides* to give each side its own filter, since a renamed column would make a shared filter fail on one side.
+
+Ignore case, Ignore trailing spaces, NULL = blank and Ignore data types apply to group values and counts as they do to row compares. Grouping does not depend on either database's collation.
+
+Each side runs one `GROUP BY` query, so a serverless side is scanned once. The results list the groups that differ, are only on the left, or are only on the right, with left, right and difference (right − left) for every aggregate. Export CSV writes the same columns. A side with more groups than `tableDiff.pairLimit` stops the comparison; group by fewer columns.
+
+Switching back to **Rows** keeps the tables selected, so you can drill into a group that doesn't match.
+
 ## Compare schemas
 
 **Table Diff: Compare Schemas…** (also a button in the Connections view) checks that one schema has the same tables and columns as another, for example a dev database against a production one. Pick a connection, database and schema for the left side (the schema to check), then the same for the right side (the schema it should match). The last picks are remembered and listed first next time.

@@ -2,7 +2,7 @@
   "name": "synapse-table-diff",
   "displayName": "Table Diff",
   "description": "Compare SQL Server and Azure Synapse tables",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "local",
   "private": true,
   "engines": {
