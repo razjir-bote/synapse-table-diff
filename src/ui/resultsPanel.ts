@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import type { CompareResult } from '../core/types';
+import type { AggregateResult, ChangeKind, CompareResult } from '../core/types';
 import type { HostToResults, ResultsToHost } from './protocol';
 import { pageRows, totalsByKind } from './resultsPaging';
 
@@ -13,15 +13,17 @@ export interface ResultsActions {
 
 export class ResultsPanel {
   /** One panel per result. */
-  static show(ctx: vscode.ExtensionContext, result: CompareResult, actions: ResultsActions): ResultsPanel {
+  static show(ctx: vscode.ExtensionContext, result: CompareResult | AggregateResult, actions: ResultsActions): ResultsPanel {
     return new ResultsPanel(ctx, result, actions);
   }
 
   private readonly panel: vscode.WebviewPanel;
-  private rows: CompareResult['rows'];
-  private readonly summary: Omit<CompareResult, 'rows'>;
+  private rows: CompareResult['rows'] | AggregateResult['rows'];
+  private readonly aggregate: boolean;
+  private readonly summary: Omit<CompareResult, 'rows'> | Omit<AggregateResult, 'rows'>;
 
-  private constructor(ctx: vscode.ExtensionContext, result: CompareResult, private readonly actions: ResultsActions) {
+  private constructor(ctx: vscode.ExtensionContext, result: CompareResult | AggregateResult, private readonly actions: ResultsActions) {
+    this.aggregate = result.mode === 'aggregate';
     const { rows, ...summary } = result;
     this.rows = rows;
     this.summary = summary;
@@ -30,7 +32,7 @@ export class ResultsPanel {
     const r = result.request.right;
     this.panel = vscode.window.createWebviewPanel(
       'tableDiff.results',
-      `Table Diff: ${l.schema}.${l.name} ↔ ${r.schema}.${r.name}`,
+      `Table Diff: ${this.aggregate ? 'Σ ' : ''}${l.schema}.${l.name} ↔ ${r.schema}.${r.name}`,
       vscode.ViewColumn.Active,
       { enableScripts: true, localResourceRoots: [root], retainContextWhenHidden: true },
     );
@@ -69,10 +71,18 @@ export class ResultsPanel {
   private handle(m: ResultsToHost): void {
     switch (m.type) {
       case 'ready':
-        this.post({ type: 'summary', summary: this.summary, totalByKind: totalsByKind(this.rows) });
+        if (this.aggregate) {
+          this.post({ type: 'aggregateSummary', summary: this.summary as Omit<AggregateResult, 'rows'>, totalByKind: totalsByKind<{ kind: ChangeKind }>(this.rows) });
+        } else {
+          this.post({ type: 'summary', summary: this.summary as Omit<CompareResult, 'rows'>, totalByKind: totalsByKind<{ kind: ChangeKind }>(this.rows) });
+        }
         break;
       case 'page':
-        this.post({ type: 'rows', kind: m.kind, offset: Math.max(0, Math.floor(Number(m.offset)) || 0), rows: pageRows(this.rows, m.kind, m.offset, m.limit) });
+        if (this.aggregate) {
+          this.post({ type: 'aggregateRows', kind: m.kind, offset: Math.max(0, Math.floor(Number(m.offset)) || 0), rows: pageRows(this.rows as AggregateResult['rows'], m.kind, m.offset, m.limit) });
+          break;
+        }
+        this.post({ type: 'rows', kind: m.kind, offset: Math.max(0, Math.floor(Number(m.offset)) || 0), rows: pageRows(this.rows as CompareResult['rows'], m.kind, m.offset, m.limit) });
         break;
       case 'openDiff':
         this.run(() => this.actions.openDiff());

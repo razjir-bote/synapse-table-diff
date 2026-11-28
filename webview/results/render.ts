@@ -1,4 +1,4 @@
-import type { ColumnInfo, CompareResult, ExcludedColumn, KeyProblems, SchemaDiff } from '../../src/core/types';
+import type { AggregateResult, ColumnInfo, CompareResult, ExcludedColumn, KeyProblems, SchemaDiff } from '../../src/core/types';
 
 type Summary = Omit<CompareResult, 'rows'>;
 
@@ -135,4 +135,26 @@ export function renderKeyProblems(root: HTMLElement, k: KeyProblems): void {
     }
     root.appendChild(t);
   }
+}
+
+export function renderAggregateSummary(root: HTMLElement, s: Omit<AggregateResult, 'rows'>): void {
+  root.textContent = '';
+  const { left, right } = s.request;
+  root.appendChild(el('h1', undefined, `Σ ${left.schema}.${left.name} ↔ ${right.schema}.${right.name}`));
+  const stats = el('div', 'stats');
+  const stat = (label: string, value: string, cls = '') => {
+    const d = el('div', `stat ${cls}`.trim());
+    d.append(el('div', 'stat-value', value), el('div', 'stat-label', label));
+    stats.appendChild(d);
+  };
+  stat('Left groups', fmt(s.leftGroups));
+  stat('Right groups', fmt(s.rightGroups));
+  stat('Differ (changed)', fmt(s.changed), 'changed');
+  stat('Only on left', fmt(s.removed), 'removed');
+  stat('Only on right', fmt(s.added), 'added');
+  stat('Matching', fmt(s.matching));
+  stat('Duration', formatDuration(s.durationMs));
+  root.appendChild(stats);
+  root.appendChild(el('div', 'pools', `Pools: left ${s.poolTypes.left}, right ${s.poolTypes.right}`));
+  for (const w of s.warnings) root.appendChild(el('div', 'warning', w));
 }

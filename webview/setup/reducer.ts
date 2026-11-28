@@ -1,4 +1,6 @@
+import type { CompareRequest } from '../../src/core/types';
 import type { HostToSetup } from '../../src/ui/protocol';
+import { pruneAggregate } from './aggregateForm';
 import { defaultKey, sharedColumns, type SetupState } from './render';
 
 const lc = (s: string) => s.toLowerCase();
@@ -6,6 +8,12 @@ const lc = (s: string) => s.toLowerCase();
 function applyDescribed(state: SetupState): void {
   const { left, right } = state.sides;
   if (left.columns.length === 0 || right.columns.length === 0) return;
+  if (state.pendingAggregate) {
+    state.groupBy = state.pendingAggregate.groupBy.map((g) => ({ ...g }));
+    state.measures = state.pendingAggregate.measures.map((m) => ({ ...m, aggs: [...m.aggs] }));
+    state.pendingAggregate = undefined;
+  }
+  pruneAggregate(state);
   const shared = new Set(sharedColumns(state).map(lc));
   if (state.pendingInitial) {
     state.keyColumns = state.pendingInitial.keys.filter((k) => shared.has(lc(k)));
@@ -15,6 +23,15 @@ function applyDescribed(state: SetupState): void {
     state.keyColumns = defaultKey(state);
     state.excludedColumns = [];
   }
+}
+
+/**
+ * Keys/exclusions to restore once the sides are described. Aggregate requests carry no row keys, so they
+ * restore nothing here and a later switch to Rows applies the declared default key.
+ */
+export function initialPending(initial: CompareRequest): SetupState['pendingInitial'] {
+  if (initial.mode === 'aggregate') return undefined;
+  return { keys: initial.keyColumns, excluded: initial.excludedColumns };
 }
 
 /**
@@ -54,7 +71,10 @@ export function applyHostMessage(state: SetupState, m: HostToSetup): boolean {
     }
     case 'error':
       state.error = m.message;
-      if (m.side) state.pendingInitial = undefined;
+      if (m.side) {
+        state.pendingInitial = undefined;
+        state.pendingAggregate = undefined;
+      }
       return true;
     default:
       return false;

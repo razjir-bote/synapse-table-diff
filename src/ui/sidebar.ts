@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { CompareRequest } from '../core/types';
+import { recentLabel } from '../commands/compare';
 import type { ConnectionProfile, ProfileStore } from '../profiles/profileStore';
 import type { RecentStore } from '../profiles/recentStore';
 
@@ -27,12 +28,22 @@ export function recentRow(r: CompareRequest, profileName: (id: string) => string
   const name = (id: string) => profileName(id) ?? '(missing connection)';
   const left = `${r.left.database}.${r.left.schema}.${r.left.name}`;
   const right = `${r.right.database}.${r.right.schema}.${r.right.name}`;
-  const keys = r.keyColumns.join(', ');
+  const pair = (p: { left: string; right: string }) => `${p.left} ↔ ${p.right}`;
+  const filt = (label: string, f: string | undefined) => (f && f.trim() !== '' ? `\n${label}: ${f.trim()}` : '');
+  let detail: string;
+  if (r.mode === 'aggregate' && r.aggregate) {
+    const a = r.aggregate;
+    detail = `Group by: ${a.groupBy.length ? a.groupBy.map(pair).join(', ') : 'none'}\n` +
+      `Measures: ${a.measures.map((m) => `${pair(m)} (${m.aggs.join(', ')})`).join(', ')}`;
+    if (a.rightFilter === undefined) detail += filt('Filter', r.filter);
+    else detail += filt('Left filter', r.filter) + filt('Right filter', a.rightFilter);
+  } else {
+    detail = `Key: ${r.keyColumns.join(', ')}${filt('Filter', r.filter)}`;
+  }
   return {
-    label: `${r.left.schema}.${r.left.name} ↔ ${r.right.schema}.${r.right.name}`,
+    label: recentLabel(r),
     description: `${name(r.left.profileId)} → ${name(r.right.profileId)}`,
-    tooltip: `Left: ${name(r.left.profileId)} · ${left}\nRight: ${name(r.right.profileId)} · ${right}\nKey: ${keys}` +
-      (r.filter && r.filter.trim() !== '' ? `\nFilter: ${r.filter.trim()}` : '') +
+    tooltip: `Left: ${name(r.left.profileId)} · ${left}\nRight: ${name(r.right.profileId)} · ${right}\n${detail}` +
       '\n\nClick to open in the setup form; ▶ to run again.',
     contextValue: 'recent',
     icon: 'diff',

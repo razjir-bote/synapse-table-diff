@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { renderSummary, renderSchemaTab, renderKeyProblems, formatDuration, typeDesc } from '../../webview/results/render';
+import { renderAggregateSummary, renderSummary, renderSchemaTab, renderKeyProblems, formatDuration, typeDesc } from '../../webview/results/render';
 import type { ColumnInfo, CompareResult, SchemaDiff, KeyProblems } from '../../src/core/types';
 
 const ref = (name: string) => ({ profileId: 'p', database: 'db', schema: 'dbo', name });
@@ -114,5 +114,27 @@ describe('renderKeyProblems', () => {
     const root = document.createElement('div');
     renderKeyProblems(root, { duplicateKeys: [], nullKeys: [], leftDupRows: 0, rightDupRows: 0, leftNullKeyRows: 0, rightNullKeyRows: 0 });
     expect(root.textContent).toContain('No key problems');
+  });
+});
+
+describe('renderAggregateSummary', () => {
+  it('shows aggregate stats, pools and warnings', () => {
+    const root = document.createElement('div');
+    renderAggregateSummary(root, {
+      mode: 'aggregate',
+      request: { left: ref('a'), right: ref('b'), keyColumns: [], excludedColumns: [], ignoreCase: false, ignoreTrailingSpaces: false },
+      plan: { groups: [], measures: [], targets: [] },
+      leftGroups: 1200, rightGroups: 1201, changed: 7, added: 1, removed: 0, matching: 1193,
+      detailCapped: false, warnings: ['careful <b>x</b>'], durationMs: 850,
+      poolTypes: { left: 'dedicated', right: 'serverless' },
+    });
+    expect(root.querySelector('h1')?.textContent).toBe('Σ dbo.a ↔ dbo.b');
+    const stats = Array.from(root.querySelectorAll('.stat')).map((s) => [s.querySelector('.stat-label')?.textContent, s.querySelector('.stat-value')?.textContent]);
+    expect(stats).toEqual([
+      ['Left groups', '1,200'], ['Right groups', '1,201'], ['Differ (changed)', '7'],
+      ['Only on left', '0'], ['Only on right', '1'], ['Matching', '1,193'], ['Duration', '850 ms'],
+    ]);
+    expect(root.querySelector('.pools')?.textContent).toContain('serverless');
+    expect(root.querySelector('.warning')?.textContent).toBe('careful <b>x</b>');
   });
 });

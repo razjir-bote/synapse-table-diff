@@ -41,7 +41,7 @@ function checkAbort(signal?: AbortSignal): void {
  * signal is aborted before closing, which cancels the other side's in-flight query or paused stream. Otherwise
  * pool.close() would wait for that request forever. The original error is rethrown.
  */
-async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners, signal: AbortSignal) => Promise<T>): Promise<T> {
+export async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners, signal: AbortSignal) => Promise<T>): Promise<T> {
   checkAbort(deps.signal);
   const pass = new AbortController();
   const onOuterAbort = () => pass.abort();
@@ -69,7 +69,7 @@ async function withRunners<T>(deps: PipelineDeps, fn: (r: Runners, signal: Abort
   }
 }
 
-function toColumn(r: Record<string, unknown>): ColumnInfo {
+export function toColumn(r: Record<string, unknown>): ColumnInfo {
   return {
     name: String(r.name),
     type: String(r.type_name).toLowerCase(),
