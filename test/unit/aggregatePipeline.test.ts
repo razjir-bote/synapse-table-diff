@@ -66,6 +66,25 @@ describe('runAggregateComparison', () => {
     expect(stages[1][1]).toBe('Computing aggregates on both tables (one scan of each)…');
   });
 
+  it('names the exact-sum measure when SUM overflows decimal(38,s)', async () => {
+    const boom = new Error('Arithmetic overflow error converting numeric to data type numeric.');
+    const side = (): PipelineDeps['left'] => ({
+      label: 'srv', poolType: 'dedicated',
+      async open(): Promise<QueryRunner> {
+        return {
+          async query() { return COLS as never; },
+          // eslint-disable-next-line require-yield
+          async *stream() { throw boom; },
+          async close() {},
+        } as unknown as QueryRunner;
+      },
+    });
+    const deps: PipelineDeps = { left: side(), right: side(), limits: DEFAULT_LIMITS };
+    const err = await runAggregateComparison(req(), deps).catch((e) => e);
+    expect(err).toBeInstanceOf(ComparePlanError);
+    expect(err.message).toBe(`Sum of amount overflowed decimal(38,2). ${boom.message}`);
+  });
+
   it('uses the right filter for the right query only', async () => {
     const { deps, ll, rl } = setup([], []);
     await runAggregateComparison(req({ filter: 'x = 1' }, { rightFilter: 'y = 2' }), deps);

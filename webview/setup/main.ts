@@ -1,7 +1,7 @@
 import type { CompareRequest, Side } from '../../src/core/types';
 import type { HostToSetup, SetupToHost } from '../../src/ui/protocol';
 import { aggregateRequest, isNumericPair, newMeasure, newPair } from './aggregateForm';
-import { applyHostMessage } from './reducer';
+import { applyHostMessage, initialPending } from './reducer';
 import { canRun, excludeAllColumns, renderSetup, type SetupActions, type SetupState } from './render';
 
 declare function acquireVsCodeApi(): { postMessage(m: SetupToHost): void };
@@ -192,7 +192,7 @@ function init(profiles: { id: string; name: string }[], initial?: CompareRequest
     rightFilter: initial.aggregate?.rightFilter ?? '',
   };
   if (initial.mode === 'aggregate' && initial.aggregate) state.pendingAggregate = initial.aggregate;
-  state.pendingInitial = { keys: initial.keyColumns, excluded: initial.excludedColumns };
+  state.pendingInitial = initialPending(initial);
   for (const side of ['left', 'right'] as Side[]) {
     const t = initial[side];
     state.sides[side].profileId = t.profileId;

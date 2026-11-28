@@ -1,3 +1,4 @@
+import type { CompareRequest } from '../../src/core/types';
 import type { HostToSetup } from '../../src/ui/protocol';
 import { pruneAggregate } from './aggregateForm';
 import { defaultKey, sharedColumns, type SetupState } from './render';
@@ -22,6 +23,15 @@ function applyDescribed(state: SetupState): void {
     state.keyColumns = defaultKey(state);
     state.excludedColumns = [];
   }
+}
+
+/**
+ * Keys/exclusions to restore once the sides are described. Aggregate requests carry no row keys, so they
+ * restore nothing here and a later switch to Rows applies the declared default key.
+ */
+export function initialPending(initial: CompareRequest): SetupState['pendingInitial'] {
+  if (initial.mode === 'aggregate') return undefined;
+  return { keys: initial.keyColumns, excluded: initial.excludedColumns };
 }
 
 /**

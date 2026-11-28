@@ -1,6 +1,5 @@
-import type { ChangeKind } from '../../src/core/types';
+import type { AggregateRow, ChangeKind } from '../../src/core/types';
 import type { HostToResults, ResultsToHost } from '../../src/ui/protocol';
-import type { AggregateRow } from '../../src/core/types';
 import { renderAggregateSummary, renderKeyProblems, renderSchemaTab, renderSummary } from './render';
 import { buildAggregateRow, VirtualGrid } from './virtualGrid';
 

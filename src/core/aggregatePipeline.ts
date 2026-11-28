@@ -6,10 +6,25 @@ import { compareAggregates, parseTolerance } from './aggregateCompare';
 import { planAggregate } from './aggregatePlan';
 import { CompareCancelledError, ComparePlanError } from './errors';
 import { toColumn, withRunners, type PipelineDeps } from './pipeline';
-import type { AggregateResult, CompareRequest, Side, Stage, TableRef } from './types';
+import type { AggregatePlan, AggregateResult, CompareRequest, Side, Stage, TableRef } from './types';
 
 const SIDES: Side[] = ['left', 'right'];
 const num = (n: number) => n.toLocaleString('en-US');
+
+/** Names the exact-sum measure(s) whose decimal(38,s) SUM may have overflowed; undefined when there are none. */
+function overflowMessage(plan: AggregatePlan, original: string): string | undefined {
+  const sums: { label: string; scale: number }[] = [];
+  for (const t of plan.targets) {
+    if (t.agg !== 'sum') continue;
+    const mode = plan.measures[t.measure]?.sum;
+    if (mode?.kind === 'exact') sums.push({ label: t.label.replace(/ · sum$/, ''), scale: mode.scale });
+  }
+  if (sums.length === 0) return undefined;
+  if (sums.length === 1) return `Sum of ${sums[0].label} overflowed decimal(38,${sums[0].scale}). ${original}`;
+  const same = sums.every((s) => s.scale === sums[0].scale);
+  const list = sums.map((s) => (same ? s.label : `${s.label} (scale ${s.scale})`)).join(', ');
+  return `Sum overflowed decimal(38,${same ? sums[0].scale : '…'}) for one of: ${list}. ${original}`;
+}
 
 export async function runAggregateComparison(req: CompareRequest, deps: PipelineDeps): Promise<AggregateResult> {
   const started = Date.now();
@@ -57,10 +72,20 @@ export async function runAggregateComparison(req: CompareRequest, deps: Pipeline
       }
       return rows;
     };
-    const data = await withRunners(deps, async (r, sig) => {
-      const [left, right] = await Promise.all(SIDES.map((s) => readSide(r[s], s, sig)));
-      return { left, right };
-    });
+    let data: { left: Record<string, unknown>[]; right: Record<string, unknown>[] };
+    try {
+      data = await withRunners(deps, async (r, sig) => {
+        const [left, right] = await Promise.all(SIDES.map((s) => readSide(r[s], s, sig)));
+        return { left, right };
+      });
+    } catch (err) {
+      if (!signal?.aborted && !(err instanceof CompareCancelledError) && !(err instanceof ComparePlanError) &&
+        err instanceof Error && /arithmetic overflow/i.test(err.message)) {
+        const named = overflowMessage(plan, err.message);
+        if (named) throw new ComparePlanError(named);
+      }
+      throw err;
+    }
     checkAbort();
 
     progress('compare', 'Comparing groups…');

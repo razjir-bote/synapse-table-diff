@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import { renderSetup, canRun, sharedColumns, defaultKey, excludeAllColumns, SERVERLESS_NOTE, AGG_SERVERLESS_NOTE, type SetupState } from '../../webview/setup/render';
-import type { ColumnInfo } from '../../src/core/types';
+import { initialPending } from '../../webview/setup/reducer';
+import type { ColumnInfo, CompareRequest } from '../../src/core/types';
 
 const col = (name: string, ordinal = 1): ColumnInfo => ({ name, type: 'int', maxLength: 4, precision: 10, scale: 0, nullable: false, ordinal });
 
@@ -320,5 +321,27 @@ describe('aggregate reducer', () => {
     expect(s.groupBy).toEqual([{ left: 'Id', right: 'id' }]);
     expect(s.measures).toEqual([{ left: 'Name', right: 'NAME', aggs: ['count'] }]);
     expect(s.pendingAggregate).toBeUndefined();
+  });
+});
+
+describe('initialPending', () => {
+  const ref = { profileId: 'p', database: 'db', schema: 'dbo', name: 't' };
+  const base: CompareRequest = {
+    left: ref, right: ref, keyColumns: ['Id'], excludedColumns: ['Name'], ignoreCase: false, ignoreTrailingSpaces: false,
+  };
+  it('restores keys and exclusions for a rows request', () => {
+    expect(initialPending(base)).toEqual({ keys: ['Id'], excluded: ['Name'] });
+  });
+  it('restores nothing for an aggregate request, so switching to Rows applies the default key', () => {
+    expect(initialPending({ ...base, mode: 'aggregate', keyColumns: [], excludedColumns: [] })).toBeUndefined();
+    const s = state({ mode: 'aggregate' });
+    s.pendingInitial = initialPending({ ...base, mode: 'aggregate', keyColumns: [], excludedColumns: [] });
+    const ref2 = { profileId: 'p', database: 'db', schema: 'dbo', name: 't' };
+    const cols = (names: string[]) => names.map((n, i) => col(n, i + 1));
+    s.sides.left.columns = [];
+    s.sides.right.columns = [];
+    applyHostMessage(s, { type: 'described', side: 'left', ref: ref2, columns: cols(['Id', 'Name']), declaredKey: ['Id'], poolType: 'dedicated' });
+    applyHostMessage(s, { type: 'described', side: 'right', ref: ref2, columns: cols(['id', 'NAME']), declaredKey: [], poolType: 'dedicated' });
+    expect(s.keyColumns).toEqual(['Id']);
   });
 });

@@ -76,7 +76,16 @@ describe('compareAggregates', () => {
     expect(cmp([row('a', { m_0_sum: '0.30000000000000004' })], [row('a', { m_0_sum: '0.3' })], p).matching).toBe(1);
     const r = cmp([row('a', { m_0_sum: '1' })], [row('a', { m_0_sum: '1.1' })], p);
     expect(r.changed).toBe(1);
-    expect(r.rows[0].diff[1]).toBe(String(1.1 - 1));
+    expect(r.rows[0].diff[1]).toBe('0.1');
+  });
+  it('presents float sums as plain numbers and trims float noise in the difference', () => {
+    const p = plan({ kind: 'float' });
+    const r = cmp([row('a', { m_0_sum: '1.50000000000000E+000' })], [row('a', { m_0_sum: '1.6' })], p);
+    expect(r.rows[0].left[1]).toBe('1.5');
+    expect(r.rows[0].right[1]).toBe('1.6');
+    expect(r.rows[0].diff[1]).toBe('0.1');
+    const n = cmp([row('a', { m_0_sum: null })], [row('a', { m_0_sum: '2' })], p);
+    expect(n.rows[0].left[1]).toBeNull();
   });
   it('user tolerance applies to float sums', () => {
     const p = plan({ kind: 'float' });

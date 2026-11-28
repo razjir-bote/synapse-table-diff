@@ -80,7 +80,7 @@ function compareTarget(
       const s = mode.scale;
       return { differs: !exactSumEqual(ls, rs, s, tol), diff: fromScaled(toScaled(rs, s) - toScaled(ls, s), s) };
     }
-    return { differs: !floatSumEqual(ls, rs, tol), diff: String(num(rs) - num(ls)) };
+    return { differs: !floatSumEqual(ls, rs, tol), diff: String(Number((num(rs) - num(ls)).toPrecision(15))) };
   }
   const lb = big(ls);
   const rb = big(rs);
@@ -101,7 +101,12 @@ export function compareAggregates(
     for (const row of rows) {
       const group: (string | null)[] = [];
       for (let i = 0; i < n; i++) group.push(cell(row[`g_${i}`]));
-      m.set(JSON.stringify(group), { group, vals: plan.targets.map((t) => cell(row[t.alias])) });
+      const vals = plan.targets.map((t) => {
+        const v = cell(row[t.alias]);
+        const isFloat = t.agg === 'sum' && plan.measures[t.measure]?.sum?.kind === 'float';
+        return isFloat && v !== null ? String(Number(v)) : v;
+      });
+      m.set(JSON.stringify(group), { group, vals });
     }
     return m;
   };

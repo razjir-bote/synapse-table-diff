@@ -43,7 +43,7 @@ mode of the existing form, not a separate tool.
     pool types, warnings.
   - Tabs reuse the existing kinds: Changed = in both, some aggregate differs; Removed = only on left;
     Added = only on right; All.
-  - Grid: group-by columns (named as on the left), then for each aggregate (row count first, then each
+  - Grid: group-by columns (named like measures: the left name when both match case-insensitively, otherwise `left ↔ right`), then for each aggregate (row count first, then each
     measure's chosen aggregates in order): left, right, difference. Differing cells are highlighted as
     changed cells are today. Matching groups are not listed.
   - CSV export of the same columns, with the existing BOM/quoting/formula neutralization.
@@ -147,6 +147,10 @@ mode of the existing form, not a separate tool.
   tolerance is relative to `max(|l|, |r|)`. Counts and the row count are always exact.
 - **Group limit** is per side and enforced while streaming rows: as soon as a side exceeds `pairLimit`
   groups, the pass aborts (both queries cancelled) with the error, so memory stays bounded.
+
+## Known gaps
+
+- Generated aggregate SQL (GROUP BY / COUNT(DISTINCT) on nvarchar(max) normalized expressions with COLLATE, CONVERT style 3 for float sums) is verified on local SQL Server only; run one aggregate compare on a dedicated and a serverless pool before release.
 
 ## Left to the builder
 

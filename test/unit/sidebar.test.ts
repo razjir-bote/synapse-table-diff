@@ -49,6 +49,26 @@ describe('sidebar rows', () => {
     expect(recentRow(req(), () => 'Prod').label).toBe(recentLabel(req()));
   });
 
+  it('aggregate tooltip shows group by, measures and filters instead of Key', () => {
+    const aggregate = {
+      groupBy: [{ left: 'region', right: 'area' }],
+      measures: [{ left: 'amount', right: 'amt', aggs: ['sum' as const, 'count' as const] }],
+    };
+    const shared = recentRow(req({ mode: 'aggregate', keyColumns: [], filter: ' x = 1 ', aggregate }), () => 'Prod').tooltip;
+    expect(shared).not.toContain('Key:');
+    expect(shared).toContain('Group by: region ↔ area');
+    expect(shared).toContain('Measures: amount ↔ amt (sum, count)');
+    expect(shared).toContain('\nFilter: x = 1');
+    const split = recentRow(
+      req({ mode: 'aggregate', keyColumns: [], filter: 'x = 1', aggregate: { ...aggregate, groupBy: [], rightFilter: 'y = 2' } }),
+      () => 'Prod',
+    ).tooltip;
+    expect(split).toContain('Group by: none');
+    expect(split).toContain('Left filter: x = 1');
+    expect(split).toContain('Right filter: y = 2');
+    expect(recentRow(req(), () => 'Prod').tooltip).toContain('Key: order_id');
+  });
+
   it('has a progress message for the aggregates stage', () => {
     expect(STAGE_MESSAGES.aggregates).toBe('Computing aggregates…');
   });
