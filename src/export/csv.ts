@@ -24,14 +24,14 @@ function field(v: string | null | undefined): string {
   return v;
 }
 
-function line(fields: (string | null | undefined)[]): string {
+export function csvLine(fields: (string | null | undefined)[]): string {
   return fields.map(field).join(',') + '\r\n';
 }
 
 function csvRow(result: CompareResult, row: DiffRow): string {
   const keys = result.plan.keys.map((_, i) => row.key[i]);
   const cols = result.plan.compared.flatMap((_, i) => [row.left?.[i], row.right?.[i]]);
-  return line([row.kind, ...keys, ...cols]);
+  return csvLine([row.kind, ...keys, ...cols]);
 }
 
 /**
@@ -80,7 +80,7 @@ export async function writeCsv(result: CompareResult, out: NodeJS.WritableStream
       ...result.plan.keys.map((k) => k.name),
       ...result.plan.compared.flatMap((c) => [`left_${c.name}`, `right_${c.name}`]),
     ];
-    let buf = BOM + line(header);
+    let buf = BOM + csvLine(header);
     for (const row of result.rows) {
       buf += csvRow(result, row);
       if (buf.length >= FLUSH_CHARS) {
