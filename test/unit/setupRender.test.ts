@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { renderSetup, canRun, sharedColumns, defaultKey, excludeAllColumns, SERVERLESS_NOTE, type SetupState } from '../../webview/setup/render';
+import { renderSetup, canRun, sharedColumns, defaultKey, excludeAllColumns, SERVERLESS_NOTE, AGG_SERVERLESS_NOTE, type SetupState } from '../../webview/setup/render';
 import type { ColumnInfo } from '../../src/core/types';
 
 const col = (name: string, ordinal = 1): ColumnInfo => ({ name, type: 'int', maxLength: 4, precision: 10, scale: 0, nullable: false, ordinal });
@@ -16,7 +16,8 @@ function state(over: Partial<SetupState> = {}): SetupState {
   return {
     profiles: [{ id: 'p', name: 'Prof' }],
     sides: { left: side(['Id', 'Name', 'OnlyL'], ['Id']), right: side(['id', 'NAME', 'OnlyR']) },
-    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, nullEqualsBlank: false, ignoreDataTypes: false, ...over,
+    keyColumns: [], excludedColumns: [], filter: '', ignoreCase: false, ignoreTrailingSpaces: false, nullEqualsBlank: false, ignoreDataTypes: false,
+    mode: 'rows', groupBy: [], measures: [], sumTolerance: '', sameFilter: true, rightFilter: '', ...over,
   };
 }
 
@@ -198,6 +199,8 @@ describe('exclude all / include all', () => {
       onProfile: noop, onDatabase: noop, onTable: noop, onToggleKey: noop, onToggleExclude: noop,
       onFilter: noop, onIgnoreCase: noop, onIgnoreTrailing: noop, onNullEqualsBlank: noop, onIgnoreDataTypes: noop,
       onExcludeAll: (on) => calls.push(on), onRun: noop,
+      onMode: noop, onAddGroup: noop, onGroup: noop, onRemoveGroup: noop, onAddMeasure: noop, onMeasure: noop,
+      onMeasureAgg: noop, onRemoveMeasure: noop, onSumTolerance: noop, onSameFilter: noop, onRightFilter: noop,
     });
     (root.querySelector('[data-role="exclude-all"]') as HTMLButtonElement).click();
     (root.querySelector('[data-role="include-all"]') as HTMLButtonElement).click();
@@ -217,5 +220,81 @@ describe('exclude all / include all', () => {
     const cb = root.querySelector('[data-role="ignoreDataTypes"]') as HTMLInputElement;
     expect(cb.checked).toBe(true);
     expect(cb.parentElement?.textContent).toContain('Ignore data types');
+  });
+});
+
+describe('aggregate mode render', () => {
+  const typed = (name: string, type: string, ordinal: number): ColumnInfo => ({ ...col(name, ordinal), type });
+  const aggState = (over: Partial<SetupState> = {}): SetupState => {
+    const s = state({ mode: 'aggregate', ...over });
+    s.sides.left.columns = [typed('Region', 'varchar', 1), typed('Amount', 'decimal', 2)];
+    s.sides.right.columns = [typed('area', 'varchar', 1), typed('amount', 'int', 2)];
+    return s;
+  };
+  const render = (s: SetupState) => {
+    const root = document.createElement('div');
+    renderSetup(root, s);
+    return root;
+  };
+  it('shows mode buttons with the active one marked, in both modes', () => {
+    const a = render(aggState());
+    expect(a.querySelector('[data-role="mode-aggregate"]')!.classList.contains('active')).toBe(true);
+    expect(a.querySelector('[data-role="mode-rows"]')!.classList.contains('active')).toBe(false);
+    const r = render(state());
+    expect(r.querySelector('[data-role="mode-rows"]')!.classList.contains('active')).toBe(true);
+  });
+  it('hides key/exclude lists and shows pair selects', () => {
+    const root = render(aggState({ groupBy: [{ left: 'Region', right: 'area' }], measures: [{ left: 'Amount', right: 'amount', aggs: ['sum'] }] }));
+    expect(root.querySelector('[data-role="key"]')).toBeNull();
+    expect(root.querySelector('[data-role="exclude"]')).toBeNull();
+    expect(root.querySelectorAll('[data-role="group-left"]').length).toBe(1);
+    expect(root.querySelectorAll('[data-role="measure-right"]').length).toBe(1);
+    expect(root.querySelector('[data-role="group-add"]')!.textContent).toBe('+ Add group by');
+    expect(root.querySelector('[data-role="measure-add"]')!.textContent).toBe('+ Add measure');
+  });
+  it('shows the whole-table hint with no group by', () => {
+    expect(render(aggState()).textContent).toContain('No group by: compares whole-table totals.');
+  });
+  it('disables Sum for a non-numeric pair', () => {
+    const root = render(aggState({ measures: [{ left: 'Region', right: 'area', aggs: ['count'] }, { left: 'Amount', right: 'amount', aggs: ['sum'] }] }));
+    const sums = Array.from(root.querySelectorAll('[data-role="measure-agg"][data-agg="sum"]')) as HTMLInputElement[];
+    expect(sums.map((c) => c.disabled)).toEqual([true, false]);
+  });
+  it('shows the right filter only when same-filter is unticked', () => {
+    expect(render(aggState()).querySelector('[data-role="right-filter"]')).toBeNull();
+    const root = render(aggState({ sameFilter: false }));
+    expect(root.querySelector('[data-role="right-filter"]')).not.toBeNull();
+    expect(root.textContent).toContain('Left filter');
+  });
+  it('uses the aggregate serverless note', () => {
+    const s = aggState();
+    s.sides.left.poolType = 'serverless';
+    expect(render(s).querySelector('[data-role="serverless-note"]')!.textContent).toBe(AGG_SERVERLESS_NOTE);
+  });
+  it('canRun skips key checks and reports aggregate problems', () => {
+    expect(canRun(aggState()).reason).toBe('Add at least one measure.');
+    const ok = aggState({ measures: [{ left: 'Amount', right: 'amount', aggs: ['sum'] }] });
+    expect(canRun(ok).ok).toBe(true);
+    expect(canRun({ ...ok, sumTolerance: 'abc' }).ok).toBe(false);
+  });
+});
+
+describe('aggregate reducer', () => {
+  it('restores a pending aggregate spec', () => {
+    const s = state({ mode: 'aggregate' });
+    s.sides.left.columns = [];
+    s.sides.right.columns = [];
+    s.pendingAggregate = {
+      groupBy: [{ left: 'Id', right: 'id' }, { left: 'Gone', right: 'id' }],
+      measures: [{ left: 'Name', right: 'NAME', aggs: ['count'] }],
+    };
+    const ref = { profileId: 'p', database: 'db', schema: 'dbo', name: 't' };
+    const cols = (names: string[]) => names.map((n, i) => col(n, i + 1));
+    applyHostMessage(s, { type: 'described', side: 'left', ref, columns: cols(['Id', 'Name']), declaredKey: [], poolType: 'dedicated' });
+    expect(s.pendingAggregate).toBeDefined();
+    applyHostMessage(s, { type: 'described', side: 'right', ref, columns: cols(['id', 'NAME']), declaredKey: [], poolType: 'dedicated' });
+    expect(s.groupBy).toEqual([{ left: 'Id', right: 'id' }]);
+    expect(s.measures).toEqual([{ left: 'Name', right: 'NAME', aggs: ['count'] }]);
+    expect(s.pendingAggregate).toBeUndefined();
   });
 });

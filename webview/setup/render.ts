@@ -1,4 +1,5 @@
-import type { ColumnInfo, PoolType, Side } from '../../src/core/types';
+import type { AggKind, AggregateSpec, ColumnInfo, ColumnPair, CompareMode, MeasureSpec, PoolType, Side } from '../../src/core/types';
+import { aggregateProblem, isNumericPair } from './aggregateForm';
 import { filterProblem } from '../../src/sql/filterGuard';
 
 export interface SideState {
@@ -21,6 +22,14 @@ export interface SetupState {
   ignoreTrailingSpaces: boolean;
   nullEqualsBlank: boolean;
   ignoreDataTypes: boolean;
+  mode: CompareMode;
+  groupBy: ColumnPair[];
+  measures: MeasureSpec[];
+  sumTolerance: string;
+  sameFilter: boolean;
+  rightFilter: string;
+  /** Aggregate spec from a pre-filled request, applied (and pruned) once both sides are described. */
+  pendingAggregate?: AggregateSpec;
   error?: string;
   /** Keys/exclusions from a pre-filled request, applied once both sides are described. */
   pendingInitial?: { keys: string[]; excluded: string[] };
@@ -39,6 +48,17 @@ export interface SetupActions {
   /** true: exclude every shared non-key column; false: exclude none. */
   onExcludeAll(on: boolean): void;
   onRun(): void;
+  onMode(mode: CompareMode): void;
+  onAddGroup(): void;
+  onGroup(i: number, side: Side, col: string): void;
+  onRemoveGroup(i: number): void;
+  onAddMeasure(): void;
+  onMeasure(i: number, side: Side, col: string): void;
+  onMeasureAgg(i: number, agg: AggKind, on: boolean): void;
+  onRemoveMeasure(i: number): void;
+  onSumTolerance(text: string): void;
+  onSameFilter(on: boolean): void;
+  onRightFilter(text: string): void;
 }
 
 /** The excluded list after "Exclude all" (every shared column except the keys) or "Include all" (none). */
@@ -50,6 +70,9 @@ export function excludeAllColumns(state: SetupState, on: boolean): string[] {
 
 export const SERVERLESS_NOTE =
   "This side is a serverless pool: a comparison scans its data about three times, and you're billed per data processed.";
+
+export const AGG_SERVERLESS_NOTE =
+  "This side is a serverless pool: an aggregate comparison scans its data once, and you're billed per data processed.";
 
 const lc = (s: string) => s.toLowerCase();
 
@@ -74,6 +97,10 @@ export function canRun(state: SetupState): { ok: boolean; reason?: string } {
     if (!x.profileId || !x.database || !x.table || x.columns.length === 0) {
       return { ok: false, reason: `Choose a connection, database and table for the ${s} side.` };
     }
+  }
+  if (state.mode === 'aggregate') {
+    const problem = aggregateProblem(state);
+    return problem ? { ok: false, reason: problem } : { ok: true };
   }
   if (state.keyColumns.length === 0) return { ok: false, reason: 'Choose at least one key column.' };
   const ex = new Set(state.excludedColumns.map(lc));
@@ -201,11 +228,140 @@ const NO_ACTIONS: SetupActions = {
   onIgnoreDataTypes: noop,
   onExcludeAll: noop,
   onRun: noop,
+  onMode: noop,
+  onAddGroup: noop,
+  onGroup: noop,
+  onRemoveGroup: noop,
+  onAddMeasure: noop,
+  onMeasure: noop,
+  onMeasureAgg: noop,
+  onRemoveMeasure: noop,
+  onSumTolerance: noop,
+  onSameFilter: noop,
+  onRightFilter: noop,
 };
+
+function colSelect(state: SetupState, side: Side, value: string, role: string, i: number, on: (c: string) => void): HTMLSelectElement {
+  const sel = el('select');
+  sel.dataset.role = role;
+  sel.dataset.index = String(i);
+  const cols = state.sides[side].columns;
+  if (!cols.some((c) => lc(c.name) === lc(value))) sel.appendChild(option(value, value, true));
+  for (const c of cols) sel.appendChild(option(c.name, c.name, lc(c.name) === lc(value)));
+  sel.addEventListener('change', () => on(sel.value));
+  return sel;
+}
+
+function pairRow(state: SetupState, prefix: 'group' | 'measure', i: number, p: ColumnPair, a: SetupActions): HTMLElement {
+  const row = el('div', 'pair');
+  const onCol = prefix === 'group' ? a.onGroup : a.onMeasure;
+  row.appendChild(colSelect(state, 'left', p.left, `${prefix}-left`, i, (c) => onCol(i, 'left', c)));
+  row.appendChild(el('span', 'arrow', '↔'));
+  row.appendChild(colSelect(state, 'right', p.right, `${prefix}-right`, i, (c) => onCol(i, 'right', c)));
+  return row;
+}
+
+function smallButton(role: string, text: string, index: number | undefined, onClick: () => void): HTMLButtonElement {
+  const b = el('button', 'secondary', text);
+  b.type = 'button';
+  b.dataset.role = role;
+  if (index !== undefined) b.dataset.index = String(index);
+  b.addEventListener('click', onClick);
+  return b;
+}
+
+function renderAggregate(state: SetupState, a: SetupActions): HTMLElement {
+  const box = el('div', 'aggregate');
+
+  const groups = el('fieldset', 'cols');
+  groups.appendChild(el('legend', undefined, 'Group by'));
+  if (state.groupBy.length === 0) groups.appendChild(el('div', 'hint', 'No group by: compares whole-table totals.'));
+  state.groupBy.forEach((g, i) => {
+    const row = pairRow(state, 'group', i, g, a);
+    row.appendChild(smallButton('group-remove', 'Remove', i, () => a.onRemoveGroup(i)));
+    groups.appendChild(row);
+  });
+  groups.appendChild(smallButton('group-add', '+ Add group by', undefined, () => a.onAddGroup()));
+  box.appendChild(groups);
+
+  const measures = el('fieldset', 'cols');
+  measures.appendChild(el('legend', undefined, 'Measures'));
+  state.measures.forEach((m, i) => {
+    const row = pairRow(state, 'measure', i, m, a);
+    const aggs: [AggKind, string][] = [['sum', 'Sum'], ['count', 'Count'], ['distinct', 'Distinct count']];
+    for (const [agg, text] of aggs) {
+      const label = el('label', 'check');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.dataset.role = 'measure-agg';
+      cb.dataset.index = String(i);
+      cb.dataset.agg = agg;
+      cb.checked = m.aggs.includes(agg);
+      if (agg === 'sum' && !isNumericPair(state, m)) cb.disabled = true;
+      cb.addEventListener('change', () => a.onMeasureAgg(i, agg, cb.checked));
+      label.appendChild(cb);
+      label.appendChild(el('span', undefined, text));
+      row.appendChild(label);
+    }
+    row.appendChild(smallButton('measure-remove', 'Remove', i, () => a.onRemoveMeasure(i)));
+    measures.appendChild(row);
+  });
+  measures.appendChild(smallButton('measure-add', '+ Add measure', undefined, () => a.onAddMeasure()));
+  box.appendChild(measures);
+
+  const tol = el('label', 'row stack');
+  tol.appendChild(el('span', 'label', 'Sum tolerance (optional, e.g. 0.01 or 0.1%)'));
+  const ti = el('input');
+  ti.type = 'text';
+  ti.dataset.role = 'sum-tolerance';
+  ti.value = state.sumTolerance;
+  ti.addEventListener('input', () => a.onSumTolerance(ti.value));
+  tol.appendChild(ti);
+  box.appendChild(tol);
+
+  const same = el('label', 'check');
+  const sc = el('input');
+  sc.type = 'checkbox';
+  sc.dataset.role = 'same-filter';
+  sc.checked = state.sameFilter;
+  sc.addEventListener('change', () => a.onSameFilter(sc.checked));
+  same.appendChild(sc);
+  same.appendChild(el('span', undefined, 'Same filter for both sides'));
+  box.appendChild(same);
+
+  const filterBox = (label: string, role: string, value: string, on: (t: string) => void): void => {
+    const fl = el('label', 'row stack');
+    fl.appendChild(el('span', 'label', label));
+    const ta = el('textarea');
+    ta.dataset.role = role;
+    ta.rows = 3;
+    ta.value = value;
+    ta.addEventListener('input', () => on(ta.value));
+    fl.appendChild(ta);
+    box.appendChild(fl);
+  };
+  if (state.sameFilter) {
+    filterBox('Filter (optional T-SQL WHERE condition, applied to both sides)', 'filter', state.filter, a.onFilter);
+  } else {
+    filterBox('Left filter', 'filter', state.filter, a.onFilter);
+    filterBox('Right filter', 'right-filter', state.rightFilter, a.onRightFilter);
+  }
+  return box;
+}
 
 export function renderSetup(root: HTMLElement, state: SetupState, actions: SetupActions = NO_ACTIONS): void {
   root.textContent = '';
   root.appendChild(el('h1', undefined, 'Compare Tables'));
+
+  const modes = el('div', 'modes');
+  for (const [m, text] of [['rows', 'Rows'], ['aggregate', 'Aggregates']] as [CompareMode, string][]) {
+    const b = el('button', state.mode === m ? 'secondary active' : 'secondary', text);
+    b.type = 'button';
+    b.dataset.role = `mode-${m}`;
+    b.addEventListener('click', () => actions.onMode(m));
+    modes.appendChild(b);
+  }
+  root.appendChild(modes);
 
   const sides = el('div', 'sides');
   sides.appendChild(renderSide('left', state.sides.left, state, actions));
@@ -213,9 +369,15 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   root.appendChild(sides);
 
   if (state.sides.left.poolType === 'serverless' || state.sides.right.poolType === 'serverless') {
-    const note = el('div', 'note', SERVERLESS_NOTE);
+    const note = el('div', 'note', state.mode === 'aggregate' ? AGG_SERVERLESS_NOTE : SERVERLESS_NOTE);
     note.dataset.role = 'serverless-note';
     root.appendChild(note);
+  }
+
+  if (state.mode === 'aggregate') {
+    root.appendChild(renderAggregate(state, actions));
+    appendTail(root, state, actions);
+    return;
   }
 
   const shared = sharedColumns(state);
@@ -239,7 +401,10 @@ export function renderSetup(root: HTMLElement, state: SetupState, actions: Setup
   ta.addEventListener('input', () => actions.onFilter(ta.value));
   fl.appendChild(ta);
   root.appendChild(fl);
+  appendTail(root, state, actions);
+}
 
+function appendTail(root: HTMLElement, state: SetupState, actions: SetupActions): void {
   const opts = el('div', 'opts');
   const optDefs: [string, string, boolean, (on: boolean) => void][] = [
     ['ignoreCase', 'Ignore case', state.ignoreCase, actions.onIgnoreCase],

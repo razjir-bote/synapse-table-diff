@@ -1,4 +1,5 @@
 import type { HostToSetup } from '../../src/ui/protocol';
+import { pruneAggregate } from './aggregateForm';
 import { defaultKey, sharedColumns, type SetupState } from './render';
 
 const lc = (s: string) => s.toLowerCase();
@@ -6,6 +7,12 @@ const lc = (s: string) => s.toLowerCase();
 function applyDescribed(state: SetupState): void {
   const { left, right } = state.sides;
   if (left.columns.length === 0 || right.columns.length === 0) return;
+  if (state.pendingAggregate) {
+    state.groupBy = state.pendingAggregate.groupBy.map((g) => ({ ...g }));
+    state.measures = state.pendingAggregate.measures.map((m) => ({ ...m, aggs: [...m.aggs] }));
+    state.pendingAggregate = undefined;
+  }
+  pruneAggregate(state);
   const shared = new Set(sharedColumns(state).map(lc));
   if (state.pendingInitial) {
     state.keyColumns = state.pendingInitial.keys.filter((k) => shared.has(lc(k)));
@@ -54,7 +61,10 @@ export function applyHostMessage(state: SetupState, m: HostToSetup): boolean {
     }
     case 'error':
       state.error = m.message;
-      if (m.side) state.pendingInitial = undefined;
+      if (m.side) {
+        state.pendingInitial = undefined;
+        state.pendingAggregate = undefined;
+      }
       return true;
     default:
       return false;
