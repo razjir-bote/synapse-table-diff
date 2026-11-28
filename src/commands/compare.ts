@@ -11,6 +11,7 @@ export const STAGE_MESSAGES: Record<Stage, string> = {
   rebucket: 'Narrowing differences…',
   compare: 'Comparing keys…',
   details: 'Fetching changed rows…',
+  aggregates: 'Computing aggregates…',
 };
 
 export const SERVERLESS_PROMPT =
@@ -61,7 +62,8 @@ export function readLimits(cfg: { get<T>(key: string, def: T): T }): Limits {
 }
 
 export function recentLabel(r: CompareRequest): string {
-  return `${r.left.schema}.${r.left.name} ↔ ${r.right.schema}.${r.right.name}`;
+  const label = `${r.left.schema}.${r.left.name} ↔ ${r.right.schema}.${r.right.name}`;
+  return r.mode === 'aggregate' ? `Σ ${label}` : label;
 }
 
 /** m:ss elapsed. */

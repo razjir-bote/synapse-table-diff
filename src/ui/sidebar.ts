@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { CompareRequest } from '../core/types';
+import { recentLabel } from '../commands/compare';
 import type { ConnectionProfile, ProfileStore } from '../profiles/profileStore';
 import type { RecentStore } from '../profiles/recentStore';
 
@@ -29,7 +30,7 @@ export function recentRow(r: CompareRequest, profileName: (id: string) => string
   const right = `${r.right.database}.${r.right.schema}.${r.right.name}`;
   const keys = r.keyColumns.join(', ');
   return {
-    label: `${r.left.schema}.${r.left.name} ↔ ${r.right.schema}.${r.right.name}`,
+    label: recentLabel(r),
     description: `${name(r.left.profileId)} → ${name(r.right.profileId)}`,
     tooltip: `Left: ${name(r.left.profileId)} · ${left}\nRight: ${name(r.right.profileId)} · ${right}\nKey: ${keys}` +
       (r.filter && r.filter.trim() !== '' ? `\nFilter: ${r.filter.trim()}` : '') +

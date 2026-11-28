@@ -113,7 +113,7 @@ describe('runFromRequest', () => {
     expect(t.reports.map(stripTime)).toEqual([
       'Connecting to both sides…', 'Connected to x (other) and x (other).',
       'Reading schemas…', 'Computing checksums…', 'Narrowing differences…', 'Comparing keys…', 'Fetching changed rows…',
-      'Fetching 5 of 10 rows…',
+      'Computing aggregates…', 'Fetching 5 of 10 rows…',
     ]);
   });
 
