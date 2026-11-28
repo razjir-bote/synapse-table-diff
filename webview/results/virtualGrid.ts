@@ -1,4 +1,4 @@
-import type { DiffRow } from '../../src/core/types';
+import type { AggregateRow, DiffRow } from '../../src/core/types';
 
 export const PAGE_SIZE = 200;
 export const OVERSCAN = 20;
@@ -57,9 +57,35 @@ export function buildRow(row: DiffRow, columns: string[]): HTMLElement {
   return el;
 }
 
-export class VirtualGrid {
+/** Build one aggregate grid row: kind, group cells, then left / right / Δ per target. */
+export function buildAggregateRow(row: AggregateRow, groupCount: number): HTMLElement {
+  const el = document.createElement('div');
+  el.className = `grid-row ${row.kind}`;
+  const kind = document.createElement('div');
+  kind.className = `cell cell-kind ${row.kind}`;
+  kind.textContent = KIND_SYMBOL[row.kind];
+  el.appendChild(kind);
+  for (let i = 0; i < groupCount; i++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.appendChild(valueNode(row.group[i]));
+    cell.title = cellText(row.group[i]);
+    el.appendChild(cell);
+  }
+  for (let t = 0; t < row.left.length; t++) {
+    for (const v of [row.left[t], row.right[t], row.diff[t]]) {
+      const cell = document.createElement('div');
+      cell.className = row.differs[t] ? 'cell cell-changed' : 'cell';
+      cell.textContent = v ?? '';
+      el.appendChild(cell);
+    }
+  }
+  return el;
+}
+
+export class VirtualGrid<T = DiffRow> {
   private total = 0;
-  private readonly rows = new Map<number, DiffRow>();
+  private readonly rows = new Map<number, T>();
   private readonly loaded = new Set<number>();
   private readonly pending = new Set<number>();
   private readonly scroller: HTMLElement;
@@ -73,6 +99,7 @@ export class VirtualGrid {
     private readonly rowHeight: number,
     private readonly fetchPage: (offset: number, limit: number) => void,
     private readonly metrics: GridMetrics = {},
+    private readonly buildRowFn: (row: T) => HTMLElement = (r) => buildRow(r as unknown as DiffRow, columns),
   ) {
     this.template = `2.5em repeat(${columns.length}, minmax(120px, 1fr))`;
     root.textContent = '';
@@ -113,7 +140,7 @@ export class VirtualGrid {
     this.setTotal(total);
   }
 
-  setRows(offset: number, rows: DiffRow[]): void {
+  setRows(offset: number, rows: T[]): void {
     rows.forEach((r, i) => this.rows.set(offset + i, r));
     const page = Math.floor(offset / PAGE_SIZE);
     this.pending.delete(page);
@@ -148,7 +175,7 @@ export class VirtualGrid {
       const row = this.rows.get(i);
       let el: HTMLElement;
       if (row) {
-        el = buildRow(row, this.columns);
+        el = this.buildRowFn(row);
       } else {
         el = document.createElement('div');
         el.className = 'grid-row placeholder';

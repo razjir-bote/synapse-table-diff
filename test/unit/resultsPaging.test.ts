@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { pageRows, totalsByKind } from '../../src/ui/resultsPaging';
-import type { DiffRow } from '../../src/core/types';
+import type { AggregateRow, DiffRow } from '../../src/core/types';
 
 const r = (kind: DiffRow['kind'], k: string): DiffRow => ({ kind, key: [k], changedColumns: [] });
 const rows = [r('added', '1'), r('changed', '2'), r('added', '3'), r('removed', '4')];
@@ -22,5 +22,14 @@ describe('resultsPaging clamping', () => {
     expect(pageRows(many, 'all', 0, 100000).length).toBe(200);
     expect(pageRows(many, 'all', 0, 0).length).toBe(1);
     expect(pageRows(many, 'all', -5, 2).map((x) => x.key[0])).toEqual(['0', '1']);
+  });
+});
+
+describe('resultsPaging (aggregate rows)', () => {
+  const a = (kind: DiffRow['kind'], g: string): AggregateRow => ({ kind, group: [g], left: [], right: [], diff: [], differs: [] });
+  const arows = [a('changed', 'x'), a('added', 'y'), a('changed', 'z')];
+  it('is generic over aggregate rows', () => {
+    expect(totalsByKind(arows)).toEqual({ all: 3, added: 1, removed: 0, changed: 2 });
+    expect(pageRows(arows, 'changed', 1, 10).map((r) => r.group[0])).toEqual(['z']);
   });
 });
